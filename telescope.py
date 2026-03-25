@@ -7,7 +7,8 @@ class Telescope:
                  R2=None,   
                  Rsb=None, Des=None, Dpb=None,
                  Dps=None, Dscam=None,
-                 alpha=None, demag=None):
+                 alpha=None, demag=None,
+                 Dpcam=None, Acam=None):
 
         self.name = name
 
@@ -28,7 +29,10 @@ class Telescope:
         self.Dpb = Dpb        # Separation primary - baffles/support structure, in m
 
         self.Dps = Dps        # Separation primary-secondary mirror (pole to pole), in m
-        self.Dscam = Dscam    # Separation secondary-focal plane, in m 
+        self.Dscam = Dscam    # Separation secondary-focal plane, (pole to pole) in m 
+
+        self.Dpcam = Dpcam    # Separation primary-focal plane, (pole to pole) in m
+        self.Acam = Acam      # Half-side length of square camera, in m 
 
         self.alpha = alpha    # Ratio of Dps and Fp, see Fig. 2 of https://www.sciencedirect.com/science/article/abs/pii/S0927650507000527
         self.demag = demag    # De-magnification of the secondary mirror (= 1+eta), see Eq. 7 of https://www.sciencedirect.com/science/article/abs/pii/S0927650507000527
@@ -48,11 +52,16 @@ class Telescope:
 
     def print(self):
         print(f"\nTelescope: {self.name}")
-        print("Primary mirror radius: ", self.R1," m")
-        print("Primary hole radius: ", self.Rhole," m")
-        print("Focal length (system): ", self.F," m")
-        print("Field of view: ", self.FOV, "deg")
+        print(f"Primary mirror radius: {self.R1:.2f} m")
+        print(f"Primary hole radius: {self.Rhole:.2f} m")
+        print(f"Focal length (system): {self.F:.2f} m")
+        print(f"Field of view: {self.FOV:.2f} deg")
 
+        if self.Dscam is not None:
+            print(f"Separation M1 pole to focal plane: {self.Dscam:.2f} m")            
+        if self.Acam is not None:
+            print(f"Half-side length of square camera: {self.Acam:.2f} m")            
+        
         if self.R2 is not None:
             print("Primary focal length: ", self.Fp," m")
             print("Secondary mirror radius: ", self.R2," m")
@@ -117,6 +126,21 @@ def LST():
         Rhole = math.sqrt(2*math.sqrt(3.)*Rfacet**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
         FOV = 4.5,    # see 10.1063/1.4969022
         F = 1.2*R1*2  # see f/D from 10.1063/1.4969022
+        )
+
+def MST():
+
+    R1 = 12.3/2
+    Rfacet = 1.2     #  flat-to-flat distance of one facet, see 10.1117/12.2055395
+    
+    return Telescope(
+        name="MST",
+        R1 = R1,
+        Rhole = math.sqrt(2*math.sqrt(3.)*Rfacet**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
+        FOV = 4.5,    # see 10.1063/1.4969022
+        F = 16.0,     # see MC parameter description: MST Structure
+        Dpcam = 16.0,
+        Acam = 3.0/2
         )
 
 '''
