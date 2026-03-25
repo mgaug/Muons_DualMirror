@@ -7,7 +7,7 @@ from mpmath import mp
 from dual_mirror_lib import *
 from single_mirror_lib import *
 from quadratic_camera_helper import *
-from roundish_camera_helper import *
+#from roundish_camera_helper import *
 
 '''
 A small library to produce the plots in the paper Section 4
