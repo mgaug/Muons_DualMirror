@@ -6,6 +6,8 @@ import matplotlib as mpl
 from mpmath import mp
 from dual_mirror_lib import *
 from single_mirror_lib import *
+from quadratic_camera_helper import *
+from roundish_camera_helper import *
 
 '''
 A small library to produce the plots in the paper Section 4
@@ -264,8 +266,8 @@ def Lmax2_shadow_absolute(nu_deg, psi, theta_c,R1,Rhole,Des,Dpb, c,Rsb, phi_0=0)
     #print ('cond_shadow: ',cond_shadow.shape)
 
     Lmax2 = Lmax_shadow_condition_from_M2(rhoR_mean,phi_0,nu,psi, 
-                                         phi_mean,theta_c, 
-                                         R1,Rsb,Dpb,Des)
+                                          phi_mean,theta_c, 
+                                          R1,Rsb,Dpb,Des)
     
     #print ('Lmax2: ', Lmax2.shape)
                          
@@ -291,6 +293,124 @@ def Lmax2_shadow_absolute(nu_deg, psi, theta_c,R1,Rhole,Des,Dpb, c,Rsb, phi_0=0)
                        shading='auto', norm=norm,
                        cmap='viridis')
     fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$L_{2,max}$ (m)')    
+    
+    #cm.set_label(r'$\nu=$'+f'{nu_deg:.1f}'+r'$^{\circ}$')
+    ax.set_title(rf'$\nu={nu_deg:.1f}^\circ, \psi = {psi:.0f}^\circ, \phi_0=0^\circ$')
+    ax.set_xlabel(r'$\phi-\phi_0$')
+    label_position=ax.get_rlabel_position()
+    ax.text(np.radians(label_position),ax.get_rmax()*1.25,r'$\rho_R$',fontsize=21,
+            rotation=label_position,ha='center',va='center')
+    realign_polar_xticks(ax)
+    ax.grid(alpha=0.2)
+            
+def Lmax2_shadow_quadratic_camera(nu_deg, psi, theta_c,R1,A,D,phi_0=0):
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_rlabel_position(22.)
+    
+    rhoR = np.arange(0.001,1.01,0.000995, dtype=np.float64)
+    phi = np.arange(-180.,180.1,0.2, dtype= np.float64)
+
+    rhoR_mean = 0.5*(rhoR[:-1] + rhoR[1:])     # centers, (Nr,)    
+    phi_mean = 0.5*(phi[:-1] + phi[1:])        # centers, (Nθ,)    
+    
+    nu = np.deg2rad(nu_deg)
+
+    cond_shadow = global_shadow_condition_from_quadratic_camera(rhoR_mean,phi_0,nu,psi,
+                                                                phi_mean,theta_c,
+                                                                R1,A,D)                   # has shape of rhoR_mean x phi_mean x 1
+    
+    #print ('cond_shadow: ',cond_shadow.shape)
+
+    #print ('Lmax2: ', Lmax2.shape)
+    Lmax2,Lmin2 = Lmax2min2_from_quadratic_camera(rhoR_mean,phi_0,nu,psi, 
+                                                  phi_mean,theta_c, 
+                                                  R1,A,D)
+    
+    print ('Lmax2: ', Lmax2.shape)
+    Lmax2 = np.where(cond_shadow, Lmax2, 0.)
+    Lmax2 = np.where(Lmax2>D, Lmax2,  np.where(Lmax2>0, D, 0.))
+    
+    Z_min=np.nanmin(Lmax2)
+    Z_max=np.nanmax(Lmax2)
+
+    print ('Zmin: ',Z_min, ' Zmax: ',Z_max)
+    # ------------------------------------------------------------
+    norm = mcolors.LogNorm(vmin=10.,vmax=Z_max,clip=False)
+    #norm = mcolors.Normalize(vmin=Z_min,vmax=Z_max,clip=False)
+
+    # Get color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #fig.subplots_adjust(wspace=-0.5)
+    handles = []
+    
+    cm = ax.pcolormesh(np.deg2rad(phi),rhoR,
+                       np.squeeze(Lmax2, axis=2),
+                       #, # / L_noshadow(rhoR_mean,phi_mean,R1, theta_c,c,nu,psi),
+                       shading='auto', norm=norm,
+                       cmap='viridis')
+    fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$L_{2,max}$ (m)')    
+    
+    #cm.set_label(r'$\nu=$'+f'{nu_deg:.1f}'+r'$^{\circ}$')
+    ax.set_title(rf'$\nu={nu_deg:.1f}^\circ, \psi = {psi:.0f}^\circ, \phi_0=0^\circ$')
+    ax.set_xlabel(r'$\phi-\phi_0$')
+    label_position=ax.get_rlabel_position()
+    ax.text(np.radians(label_position),ax.get_rmax()*1.25,r'$\rho_R$',fontsize=21,
+            rotation=label_position,ha='center',va='center')
+    realign_polar_xticks(ax)
+    ax.grid(alpha=0.2)
+            
+def Lmin2_shadow_quadratic_camera(nu_deg, psi, theta_c,R1,A,D,phi_0=0):
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_rlabel_position(22.)
+    
+    rhoR = np.arange(0.001,1.01,0.000995, dtype=np.float64)
+    phi = np.arange(-180.,180.1,0.2, dtype= np.float64)
+
+    rhoR_mean = 0.5*(rhoR[:-1] + rhoR[1:])     # centers, (Nr,)    
+    phi_mean = 0.5*(phi[:-1] + phi[1:])        # centers, (Nθ,)    
+    
+    nu = np.deg2rad(nu_deg)
+
+    cond_shadow = global_shadow_condition_from_quadratic_camera(rhoR_mean,phi_0,nu,psi,
+                                                                phi_mean,theta_c,
+                                                                R1,A,D)                   # has shape of rhoR_mean x phi_mean x 1
+    
+    #print ('cond_shadow: ',cond_shadow.shape)
+
+    #print ('Lmax2: ', Lmax2.shape)
+    Lmax2,Lmin2 = Lmax2min2_from_quadratic_camera(rhoR_mean,phi_0,nu,psi, 
+                                                  phi_mean,theta_c, 
+                                                  R1,A,D)
+    
+    print ('Lmin2: ', Lmin2.shape)
+    Lmin2 = np.where(cond_shadow, Lmin2, 0.)
+    Lmin2 = np.where(Lmin2>D, Lmin2,  np.where(Lmin2==0, 0., D))
+                         
+    Z_min=np.nanmin(Lmin2)
+    Z_max=np.nanmax(Lmin2)
+
+    print ('Zmin: ',Z_min, ' Zmax: ',Z_max)
+    # ------------------------------------------------------------
+    norm = mcolors.LogNorm(vmin=10.,vmax=Z_max,clip=False)
+    #norm = mcolors.Normalize(vmin=Z_min,vmax=Z_max,clip=False)
+
+    # Get color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #fig.subplots_adjust(wspace=-0.5)
+    handles = []
+    
+    cm = ax.pcolormesh(np.deg2rad(phi),rhoR,
+                       np.squeeze(Lmin2, axis=2),
+                       #, # / L_noshadow(rhoR_mean,phi_mean,R1, theta_c,c,nu,psi),
+                       shading='auto', norm=norm,
+                       cmap='viridis')
+    fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$L_{2,min}$ (m)')    
     
     #cm.set_label(r'$\nu=$'+f'{nu_deg:.1f}'+r'$^{\circ}$')
     ax.set_title(rf'$\nu={nu_deg:.1f}^\circ, \psi = {psi:.0f}^\circ, \phi_0=0^\circ$')
@@ -339,6 +459,73 @@ def Lmaxmin2_shadow_absolute(nu_deg, psi,theta_c,R1,Rhole,Des,Dpb,c,Dps,Rsb,phi_
 
     
     Z_min=np.nanmin(Lmaxmin2[cond_shadow])
+    Z_max=np.nanmax(Lmaxmin2)
+    #Lmax2_bad = np.where(cond_shadow & (Lmax2 < Dpb), Lmax2, 11.)                              
+    #print (Lmax2_bad.shape)
+
+    print ('Zmin: ',Z_min, ' Zmax: ',Z_max)
+    # ------------------------------------------------------------
+    norm = mcolors.LogNorm(vmin=1.,vmax=Z_max,clip=False)
+    #norm = mcolors.Normalize(vmin=Z_min,vmax=Z_max,clip=False)
+
+    # Get color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #fig.subplots_adjust(wspace=-0.5)
+    handles = []
+    
+    cm = ax.pcolormesh(np.deg2rad(phi),rhoR,
+                       np.squeeze(Lmaxmin2, axis=2),
+                       #, # / L_noshadow(rhoR_mean,phi_mean,R1, theta_c,c,nu,psi),
+                       shading='auto', norm=norm,
+                       cmap='viridis')
+    fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$L_{2,max}-L_{2,min}$ (m)')    
+    
+    ax.set_title(rf'$\nu={nu_deg:.1f}^\circ, \psi = {psi:.0f}^\circ, \phi_0=0^\circ$')
+    ax.set_xlabel(r'$\phi-\phi_0$')
+    label_position=ax.get_rlabel_position()
+    ax.text(np.radians(label_position),ax.get_rmax()*1.25,r'$\rho_R$',fontsize=21,
+            rotation=label_position,ha='center',va='center')
+    realign_polar_xticks(ax)
+    ax.grid(alpha=0.2)
+
+def Lmaxmin2_shadow_quadratic_camera(nu_deg, psi,theta_c,R1,A,D,phi_0=0):
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_rlabel_position(22.)
+    
+    rhoR = np.arange(0.001,1.01,0.000995, dtype=np.float64)
+    phi = np.arange(-180.,180.1,0.2, dtype= np.float64)
+
+    rhoR_mean = 0.5*(rhoR[:-1] + rhoR[1:])     # centers, (Nr,)    
+    phi_mean = 0.5*(phi[:-1] + phi[1:])        # centers, (Nθ,)    
+    
+    nu = np.deg2rad(nu_deg)
+
+    cond_shadow = global_shadow_condition_from_quadratic_camera(rhoR_mean,phi_0,nu,psi,
+                                                                phi_mean,theta_c,
+                                                                R1,A,D)                   # has shape of rhoR_mean x phi_mean x 1
+    
+    print ('cond_shadow: ',cond_shadow.shape)
+
+    Lmax2,Lmin2 = Lmax2min2_from_quadratic_camera(rhoR_mean,phi_0,nu,psi, 
+                                                  phi_mean,theta_c, 
+                                                  R1,A,D)
+    
+    print ('Lmax2: ', Lmax2.shape)
+    print ('Lmin2: ', Lmin2.shape)
+
+    Lmax2 = np.where(cond_shadow, Lmax2, 0.)    
+    Lmin2 = np.where(cond_shadow, Lmin2, 0.)
+    Lmax2 = np.where(Lmax2>D, Lmax2, np.where(Lmax2>0, D, 0.))
+    Lmin2 = np.where(Lmin2>D, Lmin2, np.where(Lmin2==0, 0., D))
+    Lmaxmin2 = Lmax2 - Lmin2
+
+    print ('Lmaxmin2: ', Lmaxmin2.shape)
+
+    
+    Z_min=np.nanmin(Lmaxmin2)
     Z_max=np.nanmax(Lmaxmin2)
     #Lmax2_bad = np.where(cond_shadow & (Lmax2 < Dpb), Lmax2, 11.)                              
     #print (Lmax2_bad.shape)
@@ -480,7 +667,7 @@ def Lmaxmin2_vs_Lmaxmin_shadow_relative(nu_deg, psi,theta_c,R1,Rhole,Des,Dpb,c,D
     #print ('Lmin2: ', Lmin2.shape)    
 
     #Lmaxmin2 = Lmax2 - Lmin2
-    Lmaxmin2 = (Lmax1 - Lmax2 + Lmin2)/Lmax1
+    Lmaxmin2 = (Lmax2 - Lmin2)/Lmax1
     #Lmaxmin2 = (Lmax1 - Lmax2)/Lmax1    
     #Lmaxmin2 = Lmax1 - Lmax2
 
@@ -504,7 +691,7 @@ def Lmaxmin2_vs_Lmaxmin_shadow_relative(nu_deg, psi,theta_c,R1,Rhole,Des,Dpb,c,D
                        #, # / L_noshadow(rhoR_mean,phi_mean,R1, theta_c,c,nu,psi),
                        shading='auto', norm=norm,
                        cmap='viridis')
-    fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$(L_{max}-L_{2,max}+L_{2,min})/L_{max}$')
+    fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$(L_{2,max}-L_{2,min})/L_{max}$')
     #fig.colorbar(cm, ax=ax, shrink=0.8,pad=0.1,label=r'$L_{max}-L_{2,max}$ (m)')        
     
     #cm.set_label(r'$\nu=$'+f'{nu_deg:.1f}'+r'$^{\circ}$')
@@ -656,7 +843,6 @@ def hole_conditions_psicycle(nu_deg, theta_c, R1,Rhole,Des,c):
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     #fig.subplots_adjust(wspace=-0.5)
     
-    cmap = ListedColormap(["blue", "red"])
     for k, psi in enumerate(np.arange(0.,360,60.)):
         nu = np.deg2rad(nu_deg)
         color = colors[k % len(colors)]  # cycle through colors
@@ -681,6 +867,63 @@ def hole_conditions_psicycle(nu_deg, theta_c, R1,Rhole,Des,c):
               bbox_to_anchor=(-0.4,1.15),
               fontsize=18)
 
+def shadow_conditions_quadratic_camera_nucycle(psi, theta_c, R1,A,D,FOV):
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_rlabel_position(22.)
+    
+    rhoR = np.arange(0.001,1.01,0.000995, dtype=np.float64)
+    phi = np.arange(-180.,180,0.2, dtype= np.float64)
+
+    handles = []
+
+    # Get color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #fig.subplots_adjust(wspace=-0.5)
+
+    print ('A=',A,'R1=',R1,'D=',D)
+    
+    for k, nu_deg in enumerate(np.arange(0.,(FOV/2-theta_c)+1,1.5)):
+        nu = np.deg2rad(nu_deg)
+        color = colors[k % len(colors)]  # cycle through colors
+
+        rhop, phi0p = get_projected_rho_phi(rhoR,0.,nu,psi,R1,D)
+
+        print (rhoR.shape, phi.shape, rhop.shape, phi0p.shape)
+        
+        new_cond = np.squeeze(global_shadow_condition_from_quadratic_camera(rhop,phi0p,nu,psi,
+                                                                            phi,theta_c,
+                                                                            R1,A,D),axis=2)
+        cf = ax.contour(np.deg2rad(phi),rhoR,
+                        new_cond,
+                        levels=[-0.5,0.5,1.5],colors=[color])
+
+        old_shadow_cond = get_shadow_square(np.deg2rad(phi),0.,rhoR*R1/A)
+        print (old_shadow_cond.shape)        
+        #old_shadow_cond = np.broadcast_to(old_shadow_cond[:,None],(rhoR.size,phi.size))
+        #print (old_shadow_cond.shape)
+        ax.contour(np.deg2rad(phi),rhoR,
+                   old_shadow_cond,
+                   levels=[-0.5,0.5,1.5],colors=[color], linestyles='dashed')
+        # Build a legend proxy using the contour line color
+        color = cf.get_edgecolor()[0]
+        handles.append(Line2D([0], [0], color=color, lw=2,
+                              label=rf"$\nu={nu_deg:.1f}^\circ$"))
+        
+        cf.set_label(r'$\nu=$'+f'{nu_deg:.1f}'+r'$^{\circ}$')
+    ax.set_title(rf'$\psi = {psi:.0f}^\circ, \phi_0=0^\circ$')
+    ax.set_xlabel(r'$\phi-\phi_0$')
+    label_position=ax.get_rlabel_position()
+    ax.text(np.radians(label_position),ax.get_rmax()*1.25,r'$\rho_R$',fontsize=21,
+            rotation=label_position,ha='center',va='center')
+    realign_polar_xticks(ax)
+    ax.grid(alpha=0.2)
+    ax.legend(handles=handles, loc="upper left",
+              bbox_to_anchor=(-0.4,1.15),
+              fontsize=18)
+            
 def shadow_conditions_nucycle(psi, theta_c, R1,Rsb,Des,Dpb,FOV):
 
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
@@ -697,7 +940,6 @@ def shadow_conditions_nucycle(psi, theta_c, R1,Rsb,Des,Dpb,FOV):
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     #fig.subplots_adjust(wspace=-0.5)
     
-    cmap = ListedColormap(["blue", "red"])
     for k, nu_deg in enumerate(np.arange(0.,(FOV/2-theta_c)+1,1.5)):
         nu = np.deg2rad(nu_deg)
         color = colors[k % len(colors)]  # cycle through colors        
@@ -721,6 +963,45 @@ def shadow_conditions_nucycle(psi, theta_c, R1,Rsb,Des,Dpb,FOV):
               bbox_to_anchor=(-0.4,1.15),
               fontsize=18)
             
+def shadow_conditions_quadratic_camera_psicycle(nu_deg, theta_c, R1,A,D,FOV):
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_rlabel_position(22.)
+    
+    rhoR = np.arange(0.001,1.01,0.000995, dtype=np.float64)
+    phi = np.arange(-180.,180,0.2, dtype= np.float64)
+
+    handles = []
+
+    # Get color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    #fig.subplots_adjust(wspace=-0.5)
+    
+    for k, psi in enumerate(np.arange(0.,360,60.)):
+        nu = np.deg2rad(nu_deg)
+        color = colors[k % len(colors)]  # cycle through colors        
+        cf = ax.contour(np.deg2rad(phi),rhoR,
+                        np.squeeze(global_shadow_condition_from_quadratic_camera(rhoR,0.,nu,psi,
+                                                                                 phi,theta_c,R1,A,D),axis=2),
+                        levels=[-0.5,0.5,1.5],colors=[color])
+        # Build a legend proxy using the contour line color
+        color = cf.get_edgecolor()[0]
+        handles.append(Line2D([0], [0], color=color, lw=2,
+                              label=rf"$\psi={psi:.0f}^\circ$"))
+        cf.set_label(r'$\psi=$'+f'{psi:.0f}'+r'$^{\circ}$')
+    ax.set_title(rf'$\nu = {nu_deg:.1f}^\circ, \phi_0=0^\circ$')
+    ax.set_xlabel(r'$\phi-\phi_0$')
+    label_position=ax.get_rlabel_position()
+    ax.text(np.radians(label_position),ax.get_rmax()*1.25,r'$\rho_R$',fontsize=21,
+            rotation=label_position,ha='center',va='center')
+    realign_polar_xticks(ax)
+    ax.grid(alpha=0.2)
+    ax.legend(handles=handles, loc="upper left",
+              bbox_to_anchor=(-0.4,1.15),
+              fontsize=18)
+
 def shadow_conditions_psicycle(nu_deg, theta_c, R1,Rsb,Des,Dpb,FOV):
 
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
