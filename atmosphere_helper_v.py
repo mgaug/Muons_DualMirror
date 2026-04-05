@@ -283,7 +283,9 @@ class AtmosphereHelper:
         
         
 
-    def transmission_aer(self, e, rmax, costheta, vaod, AE,Haer=None, HPBL=None, HElterman=None):
+    def transmission_aer(self, e, rmax, costheta, vaod, AE,
+                         Haer=None, HPBL=None, HElterman=None,
+                         debug=False):
         """
         Aerosol transmission for energies e and path length rmax.
 
@@ -362,6 +364,12 @@ class AtmosphereHelper:
                                np.exp(-HPBL/Haer) - np.exp(-rmax * costheta / Haer)
                            )
             )
+        if debug:
+            print ('rmax*costheta: ', rmax*costheta,
+                   'HPBL: ', HPBL,
+                   'HElterman: ', HElterman,
+                   'Haer: ', Haer,
+                   'tau: ', tau)
             
         return np.exp(-tau)
 
@@ -369,7 +377,7 @@ class AtmosphereHelper:
     # average along path
     # ------------------
 
-    def av_transmission_mol(self, e, rmax, costheta, n_path=256):
+    def av_transmission_mol(self, e, rmax, costheta, n_path=256, rmin=None, debug=False):
         """
         Average molecular transmission over x in [0, rmax].
 
@@ -403,21 +411,50 @@ class AtmosphereHelper:
         rmax = np.asarray(rmax, dtype=float)
 
         if np.any(rmax < 0):
-            raise ValueError("rmax must be >= 0")
+            raise ValueError("rmax must be >= 0", rmax)
+        if rmin is not None and np.any(rmin < 0):
+            raise ValueError("rmin must be >= 0", rmin)
+        if rmin is not None and np.any(rmax-rmin < 0):
+            raise ValueError("rmax must be >= rmin", rmax-rmin)
 
         u = np.linspace(0.0, 1.0, n_path)
-        x = np.outer(u, np.atleast_1d(rmax))
+        rmax = np.asarray(rmax, dtype=float)
 
-        alpha0 = np.atleast_1d(self.rayleigh_alpha0_from_energy(e))[:, None, None]
-        xx = x[None, :, :]
+        shape_u = (n_path,) + (1,) * rmax.ndim
+        if rmin is not None:
+            # define array of emission points on the imaged path
+            x = rmin[None, ...] + u.reshape(shape_u) * (rmax[None, ...] - rmin[None, ...])
+        else:
+            x = u.reshape(shape_u) * rmax[None, ...]
+        #x = np.outer(u, np.atleast_1d(rmax)) # compute the outer product
+        if debug:
+            print ('x before subtraction: ',x)
 
+        alpha0 = np.atleast_1d(self.rayleigh_alpha0_from_energy(e)) 
+        alpha0 = alpha0.reshape((len(alpha0),) + (1,) * x.ndim)        
+        xx = x[None, ...]
+
+        # integral of exponentially falling alpha_mol(r)
+        # light travels from xx to 0 ! 
+        # tau = (alpha0 / costheta) * self.scale_h * (
+        #    1.0 - np.exp(-xx * costheta / self.scale_h)
+        # )
+
+        # 
         tau = (alpha0 / costheta) * self.scale_h * (
-            1.0 - np.exp(-xx * costheta / self.scale_h)
+            1.0 
+            - np.exp(-xx * costheta / self.scale_h)
         )
+        if debug:
+            print ('tau: ',tau)
         T = np.exp(-tau)
 
-        integ = trapezoid(T, x=x[None, :, :], axis=1)
-        denom = np.maximum(np.atleast_1d(rmax)[None, :], 1e-30)
+        integ = trapezoid(T, x=x[None, ...], axis=1)
+        if rmin is not None:
+            denom = np.maximum((rmax-rmin)[None, ...], 1e-30)
+        else:
+            denom = np.maximum(rmax[None, ...], 1e-30)
+
         out = integ / denom
 
         if np.ndim(rmax) == 0:
@@ -426,7 +463,7 @@ class AtmosphereHelper:
 
     def av_transmission_aer(self, e, rmax, costheta, vaod, AE,
                             Haer=None, HPBL=None, HElterman=None,
-                            n_path=256):
+                            n_path=256, rmin=None, debug=False):
         """
         Weighted average aerosol transmission over x in [0, rmax].
 
@@ -483,21 +520,36 @@ class AtmosphereHelper:
         rmax = np.asarray(rmax, dtype=float)
 
         if np.any(rmax < 0):
-            raise ValueError("rmax must be >= 0")
+            raise ValueError("rmax must be >= 0", rmax)
+        if rmin is not None and np.any(rmin < 0):
+            raise ValueError("rmin must be >= 0", rmin)
+        if rmin is not None and np.any(rmax-rmin < 0):
+            raise ValueError("rmax must be >= rmin", rmax-rmin)
 
         if Haer is None and HPBL is None and HElterman is None:
             raise ValueError("At least one of HPBL, Haer and HElterman must be provided")
-
         if Haer < 0 or HPBL < 0 or HElterman < 0:
-            raise ValueError("HPBL, Haer and HElterman must be larger than zero, instead got: ",HPBL,Haer,HElterman)            
+            raise ValueError("HPBL, Haer and HElterman must be larger than zero, instead got: ",
+                             HPBL,Haer,HElterman)            
+
         u = np.linspace(0.0, 1.0, n_path)
-        x = np.outer(u, np.atleast_1d(rmax))
+        rmax = np.asarray(rmax, dtype=float)
+
+        shape_u = (n_path,) + (1,) * rmax.ndim
+        if rmin is not None:
+            # define array of emission points on the imaged path
+            x = rmin[None, ...] + u.reshape(shape_u) * (rmax[None, ...] - rmin[None, ...])
+        else:
+            x = u.reshape(shape_u) * rmax[None, ...]
+
+        if debug:
+            print ('x before subtraction: ',x)
 
         alpha0 = self.alpha0_from_vaod(vaod,Haer,HPBL,HElterman) * np.power(np.atleast_1d(e) / nm2ev(532.0), AE)
+        alpha0 = alpha0.reshape((len(alpha0),) + (1,) * x.ndim)        
 
-        alpha0 = alpha0[:, None, None]
-        xx = x[None, :, :]
-
+        xx = x[None, ...]
+        
         if HPBL is not None and Haer is None:
             tau = np.where(xx *costheta < HPBL, rmax*alpha0, 0.)
         elif HPBL is None and Haer is not None:
@@ -505,6 +557,7 @@ class AtmosphereHelper:
                 1.0 - np.exp(-xx * costheta / Haer)
             )
         else:
+            # the La Palma aerosol model
             tau = np.where(rmax*costheta < HPBL,
                            (alpha0 / costheta) * HElterman * np.exp(-HPBL/Haer+HPBL/HElterman) * (
                                1.0 - np.exp(-xx * costheta / HElterman)
@@ -516,10 +569,17 @@ class AtmosphereHelper:
                            )
             )
 
+        if debug:
+            print ('tau: ',tau)
+            
         T = np.exp(-tau)
 
-        integ = trapezoid(T, x=x[None, :, :], axis=1)
-        denom = np.maximum(np.atleast_1d(rmax)[None, :], 1e-30)
+        integ = trapezoid(T, x=x[None, ...], axis=1)
+        if rmin is not None:
+            denom = np.maximum((rmax-rmin)[None, ...], 1e-30)
+        else:
+            denom = np.maximum(rmax[None, ...], 1e-30)
+        #denom = np.maximum(np.atleast_1d(rmax)[None, :], 1e-30)
         out = integ / denom
 
         if np.ndim(rmax) == 0:
@@ -535,11 +595,58 @@ class AtmosphereHelper:
         """
         Geometric maximum path length used in the original phi-averaged functions.
         """
-        Lmax = R1 / np.tan(thetac) * D(rhoR, phi)
-        Lmin = Robst / np.tan(thetac) * D(rhoR * R1 / Robst, phi)
+        rhoR = np.asarray(rhoR, dtype=float)
+        phi = np.asarray(phi, dtype=float)
+
+        if rhoR.ndim == 0:
+            rhoR_grid = rhoR
+            phi_grid = phi
+        else:
+            rhoR_grid = rhoR[:, None]
+            phi_grid = phi[None, :]
+            
+        Lmax = R1 / np.tan(thetac) * D(rhoR_grid, phi_grid)
+        Lmin = Robst / np.tan(thetac) * D(rhoR_grid * R1 / Robst, phi_grid)
         if debug:
+            print("rhoR shape:", np.shape(rhoR))
+            print("phi shape:", np.shape(phi))
+            print("Lmax shape:", np.shape(Lmax))
+            print("Lmin shape:", np.shape(Lmin))
             print ('Lmax: ', Lmax, ' Lmin: ', Lmin)
-        return np.maximum(Lmax - Lmin, 0.0)
+        return Lmax, Lmin
+
+    def av_transmission_rho_mol(self, e, thetac, costheta,
+                                rho_min=0., rho_max=1., 
+                                n_rho=128, n_phi=512, n_path=256, debug=False):
+        """
+        weighted av_transmission_mol over rhoR values starting from
+        rho_min to rho_max and using the av_transmission_phi_mol
+        to obtain a phi-averaged value for av_transmission_mol
+
+        e: photon energy in eV 
+        thetac: Cherenkov angle in radians 
+        costheta: cos of observation zenith angle 
+        rho_min: minimum rhoR value considered
+        rho_max: maximum rhoR value considered
+        n_rho, n_phi, n_path: numbers of segments for numerical integration
+
+        """
+        e = np.atleast_1d(np.asarray(e, dtype=float))
+
+        if rho_min < 0 or rho_max < 0 or rho_max < rho_min:
+            raise ValueError("rho_min, rho_max must be larger than zero and rho_max>rho_min, instead got: ",rho_min, rho_max)                        
+        
+        rhoR = np.linspace(rho_min, rho_max, n_rho)
+        T = self.av_transmission_phi_mol(e, thetac, rhoR, costheta,
+                                         n_phi=n_phi, n_path=n_path, debug=debug)
+        if debug:
+            print ('T: ',T)
+
+        # weight each transmission with rhoR to account for high probability of
+        # occurrence when rhoR lies further outwards
+        norm = 0.5 * (rho_max**2 - rho_min**2)
+        out = trapezoid(T * rhoR, x=rhoR, axis=-1) / norm
+        return out
 
     def av_transmission_phi_mol(self, e, thetac, rhoR, costheta,
                                 n_phi=512, n_path=256, debug=False):
@@ -557,10 +664,18 @@ class AtmosphereHelper:
         """
         e = np.atleast_1d(np.asarray(e, dtype=float))
 
+        rhoR = np.asarray(rhoR, dtype=float)        
         phi = np.linspace(0.0, np.pi, n_phi)
-        rmax = self.rmax_for_phi(self.R1, self.Robst, thetac, rhoR, phi, debug)
+        rmax, rmin = self.rmax_for_phi(self.R1, self.Robst, thetac, rhoR, phi, debug)
 
-        av = self.av_transmission_mol(e, rmax, costheta, n_path=n_path)
+        av = self.av_transmission_mol(e, rmax, costheta, n_path=n_path, rmin=rmin, debug=debug)
+
+        if debug:
+            print("rhoR shape:", rhoR.shape)
+            print("phi shape:", phi.shape)
+            print("rmax shape:", np.shape(rmax))
+            print("av shape:", np.shape(av))
+
         if debug:
             print ('rmax: ',rmax)
             print ('av: ',av)
@@ -573,7 +688,7 @@ class AtmosphereHelper:
         else:
             maxphi = np.where(rhoR >= 1., np.arcsin(1./rhoR), np.pi)
             
-        out = (1. / maxphi) * trapezoid(av, x=phi, axis=1)
+        out = (1. / maxphi) * trapezoid(av, x=phi, axis=-1)
         return out
 
     def av_transmission_phi_aer(self, e, thetac, rhoR, costheta,
@@ -582,7 +697,7 @@ class AtmosphereHelper:
         """
         weighted av_transmission_aer over circle from 0 to 2pi, 
         using the rmax_from_phi to obtain a phi-dependent rmax value 
-        for av_transmission_mol
+        for av_transmission_aer
 
         e: photon energy in eV 
         thetac: Cherenkov angle in radians 
@@ -629,10 +744,14 @@ class AtmosphereHelper:
 
         """
         e = np.atleast_1d(np.asarray(e, dtype=float))
+        rhoR = np.asarray(rhoR, dtype=float)
+        
         phi = np.linspace(0.0, 2*np.pi, n_phi)
-        rmax = self.rmax_for_phi(self.R1, self.Robst, thetac, rhoR, phi)
+        rmax,rmin = self.rmax_for_phi(self.R1, self.Robst, thetac, rhoR, phi)
 
-        av = self.av_transmission_aer(e, rmax, costheta, vaod, AE, Haer, HPBL, HElterman, n_path=n_path)
+        av = self.av_transmission_aer(e, rmax, costheta, vaod, AE,
+                                      Haer=Haer, HPBL=HPBL, HElterman=HElterman,
+                                      n_path=n_path,rmin=rmin, debug=debug)
         if rhoR.ndim == 0:
             if rhoR >= 1:
                 maxphi = np.arcsin(1./rhoR)
@@ -641,7 +760,7 @@ class AtmosphereHelper:
         else:
             maxphi = np.where(rhoR >= 1., np.arcsin(1./rhoR), np.pi)
             
-        out = (1. / maxphi) * trapezoid(av, x=phi, axis=1)
+        out = (1. / maxphi) * trapezoid(av, x=phi, axis=-1)
         return out
 
     # ----------------------------
@@ -682,25 +801,6 @@ class AtmosphereHelper:
             - np.log(tgamma_aer_corr_right)
         )
         return np.exp(-ods)
-
-    # ----------------------------
-    # optional vectorized auxiliary functions
-    # ----------------------------
-
-    def get_av(self, rmax, costheta):
-        rmax = np.asarray(rmax, dtype=float)
-        return self.scale_h / costheta * (
-            1.0 - np.exp(-rmax * costheta / self.scale_h)
-        )
-
-    def get_av_phi(self, thetac, rhoR, costheta, n_phi=512):
-        phi = np.linspace(0.0, np.pi, n_phi)
-        rmax = (
-            self.R1 / np.tan(thetac) * D(rhoR, phi)
-            - self.Robst / np.tan(thetac) * D(rhoR * self.R1 / self.Robst, phi)
-        )
-        av = self.get_av(rmax, costheta)
-        return trapezoid(av, x=phi) / np.pi
 
     @staticmethod
     def get_e0(rho):
@@ -789,10 +889,13 @@ class AtmosphereHelper:
         show=True,
         ax=None,
         label=None,
+        debug=False
     ):
         energies_ev = np.asarray(energies_ev, dtype=float)
-        y = self.transmission_aer(energies_ev, rmax, costheta, vaod, AE, Haer, HPBL, HElterman)
+        y = self.transmission_aer(energies_ev, rmax, costheta, vaod, AE, Haer, HPBL, HElterman, debug)
 
+        if debug:
+            print ('y =',y)        
         created = ax is None
         if created:
             fig, ax = plt.subplots(constrained_layout=True)
@@ -816,13 +919,15 @@ class AtmosphereHelper:
         rmax,
         costheta,
         n_path=256,
+        rmin=None,
         filename=None,
         show=True,
         ax=None,
         label=None,
+        debug=False
     ):
         energies_ev = np.asarray(energies_ev, dtype=float)
-        y = self.av_transmission_mol(energies_ev, rmax, costheta, n_path=n_path)
+        y = self.av_transmission_mol(energies_ev, rmax, costheta, n_path=n_path, rmin=rmin, debug=debug)
 
         created = ax is None
         if created:
@@ -912,6 +1017,49 @@ class AtmosphereHelper:
             self._save_or_show(fig, filename=filename, show=show)
         return ax
 
+    def plot_av_transmission_rho_mol(
+        self,
+        energies_ev,
+        thetac,
+        costheta,
+        rhoR_min,
+        rhoR_max,
+        n_rho=128,
+        n_phi=512,
+        n_path=256,
+        filename=None,
+        show=True,
+        ax=None,
+        label=None,
+        debug=False,
+        **kwargs
+    ):
+        energies_ev = np.asarray(energies_ev, dtype=float)
+        y = self.av_transmission_rho_mol(
+            energies_ev, thetac, costheta,
+            rho_min=rhoR_min, rho_max=rhoR_max, 
+            n_rho=n_rho, n_phi=n_phi, n_path=n_path, debug=debug
+        )
+
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(constrained_layout=True)
+
+        ax.plot(energies_ev, y, label=label or "rho-avg mol", **kwargs)
+        self._finalize_plot(
+            ax,
+            xlabel="Photon energy (eV)",
+            ylabel="rhoR-averaged transmission",
+            title="rho-averaged molecular transmission",
+            legend=True,
+        )
+
+        if created:
+            self._save_or_show(fig, filename=filename, show=show)
+        return ax
+
+    
+    
     def plot_av_transmission_phi_aer(
         self,
         energies_ev,
