@@ -3,7 +3,7 @@ import math
 class Telescope:
     def __init__(self, name,
                  R1, Rhole,
-                 FOV, F,
+                 FOV, F, Omega_pix, Npix,
                  R2=None,   
                  Rsb=None, Des=None, Dpb=None,
                  Dps=None, Dscam=None,
@@ -19,7 +19,8 @@ class Telescope:
         # Optical parameters
         self.FOV = FOV        # Field-of-view of the camera, in deg
         self.F = F            # Focal length of the full telescope, in m
-
+        self.Omega_pix = np.deg2rad(Omega_pix) # Field-of-view of indiv. pixel in rad
+        self.Npix = Npix
 
         # Secondary / support structure
         self.R2 = R2          # Outer radius of M2, in m        
@@ -85,6 +86,8 @@ def SST():
         Rhole=0.48,   # Outer radius of hole in M1, in m 
         FOV=10.5,     # Field-of-view of the camera, in deg    
         F=2.15,       # Focal length of the full telescope, in m
+        Omega_pix=0.2,# Field-of-view of pixel, in deg
+        Npix=1550,    # Number of pixels
         R2=0.9,       # Outer radius of M2, in m        
         Rsb=1.07,     # Outer radius of full M2 support structure, including baffles
         Des=3.0,      # Separation primary - end of support structure, in m 
@@ -105,6 +108,8 @@ def SCT():
         Rhole=2.19,   # Outer radius of hole in M1, in m
         FOV=8.2,      # Field-of-view of the camera, in deg     
         F=F,          # Focal length of the full telescope, in m
+        Omega_pix=0.067,# Field-of-view of pixel, in deg
+        Npix=11328,   # Number of pixels        
         R2=2.71,      # Outer radius of M2, in m        
         Rsb=2.80,     # The following number has been guessed from Figure 7 of https://pos.sissa.it/236/1029
         Des=10.0,     # These numbers have been obtained from MC Telescope Models
@@ -117,28 +122,32 @@ def SCT():
 
 def LST():
 
-    R1 = 23/2
-    Rfacet = 1.51     #  flat-to-flat distance of one facet 
+    R1 = 23/2.
+    Dfacet = 1.51     #  flat-to-flat distance of one facet 
     
     return Telescope(
         name="LST",
         R1 = R1,
-        Rhole = math.sqrt(2*math.sqrt(3.)*Rfacet**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
+        Rhole = math.sqrt(2*math.sqrt(3.)*(Dfacet/2)**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
         FOV = 4.5,    # see 10.1063/1.4969022
-        F = 1.2*R1*2  # see f/D from 10.1063/1.4969022
+        F = 1.2*R1*2. # see f/D from 10.1063/1.4969022
+        Omega_pix=0.1,# Field-of-view of pixel, in deg
+        Npix=1855,    # Number of pixels        
         )
 
 def MST():
 
     R1 = 12.3/2
-    Rfacet = 1.2     #  flat-to-flat distance of one facet, see 10.1117/12.2055395
+    Dfacet = 1.2     #  flat-to-flat distance of one facet, see 10.1117/12.2055395
     
     return Telescope(
         name="MST",
         R1 = R1,
-        Rhole = math.sqrt(2*math.sqrt(3.)*Rfacet**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
+        Rhole = math.sqrt(2*math.sqrt(3.)*(Dfacet/2)**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
         FOV = 4.5,    # see 10.1063/1.4969022
         F = 16.0,     # see MC parameter description: MST Structure
+        Omega_pix=0.175,# Field-of-view of pixel, in deg
+        Npix=1800,    # Number of pixels        
         Dpcam = 16.0,
         Acam = 3.0/2
         )
