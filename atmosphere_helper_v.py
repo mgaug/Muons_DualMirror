@@ -8,11 +8,13 @@ from dataclasses import dataclass
 from rayleigh import Rayleigh
 from mumodel_helper_v import ev2nm, nm2ev, D
 
+''' obsolete code 
 @dataclass
 class UncertaintyConfig:
     # atmosphere / geometry nuisance parameters
     sigma_vaod: float = 0.01
     sigma_Haer: float = 100.0          # m
+    sigma_gamma: float = 100.0          # m    
     sigma_AE: float = 0.15
     sigma_theta_c_deg: float = 0.02
     sigma_rhoR_min: float = 0.02
@@ -22,6 +24,8 @@ class UncertaintyConfig:
     # MC control
     n_mc: int = 200
     random_seed: int | None = 12345        
+'''
+
 
 class AtmosphereHelper:
     """
@@ -70,6 +74,7 @@ class AtmosphereHelper:
     # convenience constructors
     # ----------------------------
 
+
     @classmethod
     def from_lst(cls, obs_height: float = 2200.0,
                  median_gamma_emission_height=11000.,
@@ -87,7 +92,7 @@ class AtmosphereHelper:
         # Median Hgamma for zenith angle of 0 deg. is about 10 km, in the energy range from 500 GeV to 10 TeV
         # see Fig. 1 of https://www.mdpi.com/2072-4292/17/6/1074
         return cls(obs_height=obs_height, Hgamma=median_gamma_emission_height - obs_height, atm_file=atm_file,
-                   R1=12.3/2, Rhole=1.5)
+                   R1=12.3/2, Robst=1.5)
 
     @classmethod
     def from_sst(cls, obs_height: float = 2200.0,
@@ -96,7 +101,7 @@ class AtmosphereHelper:
         # Median Hgamma for zenith angle of 0 deg. is about 9 km, in the energy range above 1 TeV
         # see Fig. 1 of https://www.mdpi.com/2072-4292/17/6/1074       
         return cls(obs_height=obs_height, Hgamma=median_gamma_emission_height - obs_height, atm_file=atm_file,
-                   R1=2.03, Rhole=0.9)
+                   R1=2.03, Robst=0.9)
 
     # ----------------------------
     # update helpers
@@ -642,8 +647,6 @@ class AtmosphereHelper:
         #denom = np.maximum(np.atleast_1d(rmax)[None, :], 1e-30)
         out = integ / denom
 
-        if np.ndim(rmax) == 0:
-            out = out[:, 0]
         return out
 
     # ----------------------------
@@ -879,6 +882,7 @@ class AtmosphereHelper:
         Haer_wrong=1300,
         AE_wrong=2.5,
         vaod_corr=0.03,
+        Haer_corr=500,            
         HPBL_corr=800,
         AE_corr=1.45,
         HElterman_corr=1200
@@ -904,7 +908,7 @@ class AtmosphereHelper:
         )
         if need_corr:
             tgamma_aer_corr_wrong = self.av_transmission_aer(
-                es_corr, Hgamma, 1.0, vaod_wrong, AE_wrong, Haer=H_wrong, n_path=1024
+                es_corr, Hgamma, 1.0, vaod_wrong, AE_wrong, Haer=Haer_wrong, n_path=1024
             )
             tgamma_aer_corr_right = self.av_transmission_aer(
                 es_corr, Hgamma, 1.0, vaod_corr, AE_corr,
@@ -915,6 +919,7 @@ class AtmosphereHelper:
         return np.exp(-ods)
 
 
+    ''' obsolete code 
     def propagate_uncertainty(self,
                               uncertainty_config=None
                               ) -> dict:
@@ -936,6 +941,7 @@ class AtmosphereHelper:
             # sample atmosphere / geometry nuisances
             vaod_i = max(1e-6, rng.normal(self.vaod, cfg.sigma_vaod))
             Haer_i = max(100, rng.normal(self.Haer, cfg.sigma_Haer))
+            gamma_i = max(1.5, rng.normal(self.gamma, cfg.sigma_gamma))
             HPBL_i = max(100, rng.normal(self.HPBL, cfg.sigma_HPBL))
             HElterman_i = max(100, rng.normal(self.HElterman, cfg.sigma_HElterman))                        
             AE_i = rng.normal(self.AE, cfg.sigma_AE)
@@ -964,6 +970,7 @@ class AtmosphereHelper:
             bmu[i] = np.sum(mu_i) * self.energy_step
             bgam[i] = np.sum(ga_i) * self.energy_step
             ratio[i] = bgam[i] / max(bmu[i], 1e-30)
+    '''
 
     @staticmethod
     def get_e0(rho):

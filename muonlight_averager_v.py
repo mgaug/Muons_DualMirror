@@ -3,27 +3,28 @@ from dataclasses import dataclass
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-from bandwidth_helper_v import BandwidthHelper
+from bandwidth_helper_v import BandwidthHelper, nm2ev, ev2nm 
 from atmosphere_helper_v import AtmosphereHelper 
 import telescope as tel
 
 
 @dataclass
 class UncertaintyConfig:
-    sigma_vaod: float = 0.01
-    sigma_Haer: float = 100.0
-    sigma_AE: float = 0.15
-    sigma_scale_h: float = 300
-    sigma_theta_c_deg: float = 0.02
-    sigma_rhoR_min: float = 0.02
-    sigma_HPBL: float = 100.0
-    sigma_HElterman: float = 200.0
+    sigma_vaod: float = 0.018       # see https://dx.doi.org/10.1088/1742-6596/2398/1/012010, correlated: 0.01, uncorrelated: 0.015, yields: 0.018 at 532 nm
+    sigma_Haer: float = 10.0        # see Table 4 of https://academic.oup.com/mnras/article/515/3/4520/6608884
+    sigma_gamma: float = 0.03       # see Table 4 of https://academic.oup.com/mnras/article/515/3/4520/6608884
+    sigma_AE: float = 0.46          # see Fig. 3 of https://www.aanda.org/articles/aa/full_html/2023/05/aa45787-22/aa45787-22.html
+    sigma_scale_h: float = 500      # Average summer at La Palma is 10300 m, compared with 9500 for Average Winter, and weighted for relative contribution of Summer months JJA
+    sigma_theta_c_deg: float = 0.2  # Useful Cherenkov angles range from 0.8 to 1.3 deg.
+    sigma_rhoR_min: float = 0.05    # Uncertainty of rhoR reconstruction
+    sigma_HPBL: float = 200.0       # best guess, see Figure 15 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
+    sigma_HElterman: float = 200.0  # best guess 
 
-    rel_mirror_unc: float = 0.01
-    rel_window_unc: float = 0.01
+    rel_mirror_unc: float = 0.01    # best guess 
+    rel_window_unc: float = 0.01    # best guess 
 
-    n_mc: int = 200
-    random_seed: int | None = 12345
+    n_mc: int = 200                 # number of MC simulations
+    random_seed: int | None = 12345 # default seed for random number generator
 
 
 class MuonModel:
@@ -44,15 +45,16 @@ class MuonModel:
         bandwidth: BandwidthHelper | None = None,            
         obs_height: float = 2200.0,   # Telescope altitude asl.
         Hgamma: float | None = None,  # Average gamma-ray emission height 
-        scale_h: float = 9700.0,      # Average molecular density scale height 
+            scale_h: float = 9500.0,      # Average molecular density scale height
         atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat",  # default atmospheric extinction file 
         theta_tel_deg: float = 0.0,   # Telescope observing zenith angle 
-        theta_c_deg: float = 1.,      # muon Cherenkov angle in deg.
+        theta_c_deg: float = 1.1,     # muon Cherenkov angle in deg.
         rhoR_min: float = 0.1,        # lower muon impact distance cut (in relative rhoR = rho/R1)
         vaod: float = 0.03,           # default vertical aerosol optical depth at 532 nm 
-        Haer: float = 500.0,          # default aerosol scale height above HPBL
-        AE: float = 1.45,             # default Angstrom exponent of ground-layer aerosols 
-        HPBL: float = 800.0,          # default boundary layer height 
+        Haer_0: float = 577.0,        # default aerosol scale height above HPBL, at zenith
+        gamma: float = 0.77           # default cos(zenith) exponent of Haer scaling 
+        AE: float = 1.45,             # default Angstrom exponent of ground-layer aerosols
+        HPBL: float = 800.0,          # default boundary layer height at zenith
         HElterman: float = 1200.0,    # default aerosol scale height below HBPL 
     ):
         # telescope
@@ -85,20 +87,23 @@ class MuonModel:
         self.costheta = np.cos(np.deg2rad(theta_tel_deg))
         self.rhoR_min = float(rhoR_min)
 
-        self.scale_h = float(scale_h)
+        # scale height of molecular density, see Section 4 of https://academic.oup.com/mnras/article/515/3/4520/6608884
+        # and https://www.epj-conferences.org/articles/epjconf/abs/2017/13/epjconf_atmo2017_01010/epjconf_atmo2017_01010.html
+        self.scale_h = float(scale_h)                   
         
-        self.vaod = float(vaod)
-        self.Haer = float(Haer)
+        self.vaod = float(vaod)                         # total VAOD at 532 nm
+        self.gamma = float(gamma)
+        self.Haer = float(Haer_0) * costheta ** gamma   # scale height of upper part above PBL, see https://academic.oup.com/mnras/article/515/3/4520/6608884, eq. 27
         self.AE = float(AE)
-        self.HPBL = float(HPBL)
-        self.HElterman = float(HElterman)
+        self.HPBL = float(HPBL)                         # vertical height of PBL above ground, frontier between HElterman and Haer scale height, see p. 4532 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
+        self.HElterman = float(HElterman)               # scale height of lowest part of PBL, default is the Elterman model https://opg.optica.org/ao/abstract.cfm?uri=ao-3-6-745
 
         self._setup_detector()
         self._setup_gamma_transmission()
 
     @classmethod
     def from_LSTN(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.LST()
@@ -114,12 +119,12 @@ class MuonModel:
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=500., HPBL=800. * costheta ** 0.77,HElterman=1200,
+                   vaod=0.03, AE=1.45, Haer=577., gamma=0.77, HPBL_0=800. * costheta ** 0.6,HElterman=1200,
                    )
 
     @classmethod
     def from_MSTN(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.MST()
@@ -135,12 +140,12 @@ class MuonModel:
         
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=500., HPBL=800. * costheta ** 0.77,HElterman=1200,
+                   vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77,HPBL=800. * costheta ** 0.6,HElterman=1200,
                    )
 
     @classmethod
     def from_LSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.LST()
@@ -152,12 +157,12 @@ class MuonModel:
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=500., HPBL=100.,HElterman=9000,
+                   vaod=0.03, AE=1.45, Haer_0=500., HPBL=100.,HElterman=9000,
                    )
 
     @classmethod
     def from_MSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.MST()
@@ -169,12 +174,12 @@ class MuonModel:
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=500., HPBL=100.,HElterman=9000,
+                   vaod=0.03, AE=1.45, Haer_0=500_0., gamma=0.,HPBL=100.,HElterman=9000,
                    )
 
     @classmethod
     def from_SSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.SST()
@@ -186,7 +191,7 @@ class MuonModel:
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=500., HPBL=100.,HElterman=9000,
+                   vaod=0.03, AE=1.45, Haer_0=500., gamma=0.,HPBL=100.,HElterman=9000,
                    )
     
     @staticmethod
@@ -288,8 +293,8 @@ class MuonModel:
         window = self.window_nominal if window is None else np.asarray(window, dtype=float)
         return np.clip(qe * mirror * window, 0.0, 1.0)
         
-    def gamma_transmission(self):
-        return self.gamma_transmission_nominal.copy()
+    def gamma_transmission(self, costheta=1.):
+        return (self.gamma_transmission_nominal**costheta).copy()
 
     def muon_transmission_mol(self, rhoR_min=None, costheta=None, thetac=None, scale_h=None, **kwargs):
         rhoR_min = self.rhoR_min if rhoR_min is None else rhoR_min
@@ -314,6 +319,7 @@ class MuonModel:
         thetac=None,
         vaod=None,
         Haer=None,
+        gamma=None,
         AE=None,
         HPBL=None,
         HElterman=None,
@@ -325,6 +331,7 @@ class MuonModel:
 
         vaod = self.vaod if vaod is None else vaod
         Haer = self.Haer if Haer is None else Haer
+        gamma = self.gamma if gamma is None else gamma
         AE = self.AE if AE is None else AE
         HPBL = self.HPBL if HPBL is None else HPBL
         HElterman = self.HElterman if HElterman is None else HElterman
@@ -338,6 +345,7 @@ class MuonModel:
             rho_min=rhoR_min,
             rho_max=1.0,
             Haer=Haer,
+            gamma=gamma,
             HPBL=HPBL,
             HElterman=HElterman,
             **kwargs,
@@ -348,14 +356,14 @@ class MuonModel:
         taer = self.muon_transmission_aer(**kwargs)
         return tmol * taer
 
-    def gamma_response(self):
-        return self.det_eff_nominal * self.gamma_transmission()
+    def gamma_response(self, **kwargs):
+        return self.det_eff_nominal * self.gamma_transmission(**kwargs)
 
     def muon_response(self, **kwargs):
         return self.det_eff_nominal * self.muon_transmission(**kwargs)
 
-    def bandwidth_gamma(self):
-        return float(np.sum(self.gamma_response()) * self.energy_step)
+    def bandwidth_gamma(self, **kwargs):
+        return float(np.sum(self.gamma_response(**kwargs)) * self.energy_step)
 
     def bandwidth_muon(self, **kwargs):
         return float(np.sum(self.muon_response(**kwargs)) * self.energy_step)
@@ -390,7 +398,8 @@ class MuonModel:
             "scale_h_m": self.scale_h,
             "atm_file": self.atm.atm_file,
             "vaod": self.vaod,
-            "Haer_m": self.Haer,
+            "Haer": self.Haer,
+            "gamma": self.gamma,
             "AE": self.AE,
             "HPBL_m": self.HPBL,
             "HElterman_m": self.HElterman,
@@ -418,8 +427,9 @@ class MuonModel:
             scale_h_i = max(100.0, rng.normal(self.scale_h, cfg.sigma_scale_h))            
             vaod_i = max(1e-1, rng.normal(self.vaod, cfg.sigma_vaod))
             Haer_i = max(1000., rng.normal(self.Haer, cfg.sigma_Haer))
+            gamma_i = max(1.5, rng.normal(self.gamma, cfg.sigma_gamma))            
             AE_i = rng.normal(self.AE, cfg.sigma_AE)
-            theta_c_i = max(0.5, rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg))
+            theta_c_i = min(1.3, max(0.8, rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg)))
             rhoR_min_i = max(0.0, rng.normal(self.rhoR_min, cfg.sigma_rhoR_min))
             HPBL_i = max(30.0, rng.normal(self.HPBL, cfg.sigma_HPBL))
             HElterman_i = max(100.0, rng.normal(self.HElterman, cfg.sigma_HElterman))
@@ -455,6 +465,7 @@ class MuonModel:
                     rhoR_min=rhoR_min_i,
                     vaod=vaod_i,
                     Haer=Haer_i,
+                    gamma=gamma_i,
                     AE=AE_i,
                     HPBL=HPBL_i,
                     HElterman=HElterman_i,
@@ -490,7 +501,7 @@ class MuonModel:
 
 
     @staticmethod
-    def build_standard_models(theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9700.):
+    def build_standard_models(theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500.):
         """
         Convenience constructor for the standard comparison set.
         """
@@ -524,7 +535,7 @@ class MuonModel:
     @staticmethod
     def _energy_to_wavelength_twin(ax, wavelengths_nm, xmin=None, xmax=None, xlabel="Photon wavelength (nm)"):
         ax_c = ax.twiny()
-        wlticks = [self.bh.nm2ev(wl) for wl in wavelengths_nm]
+        wlticks = [nm2ev(wl) for wl in wavelengths_nm]
         ax_c.set_xticks(wlticks)
         ax_c.set_xticklabels([f"{wl:g}" for wl in wavelengths_nm])
         ax_c.set_xlabel(xlabel)
@@ -545,11 +556,11 @@ class MuonModel:
         if created:
             fig, ax = plt.subplots(constrained_layout=True)
 
-        ax.plot(self.bh.qe_e, self.bh.qe_ham, "m--", lw=2, label="Photomultiplier QE")
-        ax.plot(self.bh.si_e, self.bh.qe_si,  "c-.", lw=2, label="SiPM PDE")
-        ax.plot(self.bh.mi_e, self.bh.mi_ref, "b-", label="Mirror Reflectivity")
-        ax.plot(self.bh.ca_e, self.bh.ca_ref, "r-", lw=2, label="Protection Window Transparency")
-
+        ax.plot(self.bh.qe_pmt.energy_ev, self.bh.qe_pmt.values, 'm--', lw=2, label='Photomultiplier QE')
+        ax.plot(self.bh.qe_sipm.energy_ev, self.bh.qe_sipm.values, 'c-.', lw=2, label='SiPM PDE')
+        ax.plot(self.bh.mirror.energy_ev, self.bh.mirror.values, 'b-', label='Mirror Reflectivity')
+        ax.plot(self.bh.cam_pmt.energy_ev, self.bh.cam_pmt.values, 'r-', lw=2, label='Protection Window Transparency')
+            
         ax.legend(bbox_to_anchor=(0.99, 0.98), loc="upper right")
         ax.set_xlabel(r"Photon energy $\epsilon$ (eV)")
         ax.set_ylabel(r"efficiency $\xi$")
@@ -612,7 +623,7 @@ class MuonModel:
             self.energy = old_energy
 
     # ============================================================
-    # 2) xi_det * transmission comparison (old plot_xidet)
+    # 2) xi_det * transmission comparison
     # ============================================================
 
     @classmethod
@@ -639,20 +650,20 @@ class MuonModel:
         bh = next(iter(models.values())).bh
 
         ax.plot(
-            self.bh.xi_e_pmt, tmulst_comb, "-", color="b",
-            label=rf"$\xi_{{det}}\cdot t_{{\mu}}$ LST, B$_\mu$: {tmulst_comb.sum()*self.bh.xi_steps:.3f} eV"
+            bh.xi_e_pmt, tmulst_comb, "-", color="b",
+            label=rf"$\xi_{{det}}\cdot t_{{\mu}}$ LST, B$_\mu$: {tmulst_comb.sum()*bh.xi_steps:.3f} eV"
         )
         ax.plot(
-            self.bh.xi_e_pmt, tgammalst_comb, "--", color="cornflowerblue",
-            label=rf"$\xi_{{det}}\cdot t_{{\gamma}}$ LST, B$_\gamma$: {tgammalst_comb.sum()*self.bh.xi_steps:.3f} eV"
+            bh.xi_e_pmt, tgammalst_comb, "--", color="cornflowerblue",
+            label=rf"$\xi_{{det}}\cdot t_{{\gamma}}$ LST, B$_\gamma$: {tgammalst_comb.sum()*bh.xi_steps:.3f} eV"
         )
         ax.plot(
-            self.bh.xi_e_sipm, tmusst_comb, "-", color="r",
-            label=rf"$\xi_{{det}}\cdot t_{{\mu}}$ SST, B$_\mu$: {tmusst_comb.sum()*self.bh.xi_steps:.3f} eV"
+            bh.xi_e_sipm, tmusst_comb, "-", color="r",
+            label=rf"$\xi_{{det}}\cdot t_{{\mu}}$ SST, B$_\mu$: {tmusst_comb.sum()*bh.xi_steps:.3f} eV"
         )
         ax.plot(
-            self.bh.xi_e_sipm, tgammasst_comb, "--", color="darkorange",
-            label=rf"$\xi_{{det}}\cdot t_{{\gamma}}$ SST, B$_\gamma$: {tgammasst_comb.sum()*self.bh.xi_steps:.3f} eV"
+            bh.xi_e_sipm, tgammasst_comb, "--", color="darkorange",
+            label=rf"$\xi_{{det}}\cdot t_{{\gamma}}$ SST, B$_\gamma$: {tgammasst_comb.sum()*bh.xi_steps:.3f} eV"
         )
 
         ax.legend(bbox_to_anchor=(1.0, 1.0), loc=1)
@@ -667,7 +678,7 @@ class MuonModel:
         return ax
 
     # ============================================================
-    # 3) blindness ratio plot (old plot_ratio)
+    # 3) blindness ratio plot 
     # ============================================================
 
     @classmethod
@@ -683,6 +694,8 @@ class MuonModel:
         lsts = models["LSTS"]
         msts = models["MSTS"]
         ssts = models["SSTS"]
+
+        bh = next(iter(models.values())).bh        
 
         created = ax is None
         if created:
@@ -705,13 +718,13 @@ class MuonModel:
         tgammasst_comb = ssts._gamma_combined()
 
         # no-camera grids
-        e_pmt_nc = self.bh.xi_e_pmt_nocam
-        w_pmt_nc = self.bh.xi_wl_pmt_nocam
-        det_pmt_nc = self.bh.xi_det_pmt_nocam
+        e_pmt_nc = bh.xi_e_pmt_nocam
+        w_pmt_nc = bh.xi_wl_pmt_nocam
+        det_pmt_nc = bh.xi_det_pmt_nocam
 
-        e_sipm_nc = self.bh.xi_e_sipm_nocam
-        w_sipm_nc = self.bh.xi_wl_sipm_nocam
-        det_sipm_nc = self.bh.xi_det_sipm_nocam
+        e_sipm_nc = bh.xi_e_sipm_nocam
+        w_sipm_nc = bh.xi_wl_sipm_nocam
+        det_sipm_nc = bh.xi_det_sipm_nocam
 
         tmulst_atm_nc = lstn._muon_atm_on_grid(e_pmt_nc)
         tgammalst_atm_nc = lstn._gamma_interp_on_grid(w_pmt_nc)
@@ -728,61 +741,67 @@ class MuonModel:
         tmusst_comb_nc = det_sipm_nc * tmusst_atm_nc
         tgammasst_comb_nc = det_sipm_nc * tgammasst_atm_nc
 
-        min_pmt = self.bh.get_low_idx(self.bh.xi_det_pmt, 2e-2)
-        min_sipm = self.bh.get_low_idx(self.bh.xi_det_sipm, 2e-2)
-        min_pmt_nc = self.bh.get_low_idx(self.bh.xi_det_pmt_nocam, 2e-2)
-        min_sipm_nc = self.bh.get_low_idx(self.bh.xi_det_sipm_nocam, 2e-2)
+        min_pmt = bh.get_low_idx(bh.xi_det_pmt, 2e-2)
+        min_sipm = bh.get_low_idx(bh.xi_det_sipm, 2e-2)
+        min_pmt_nc = bh.get_low_idx(bh.xi_det_pmt_nocam, 2e-2)
+        min_sipm_nc = bh.get_low_idx(bh.xi_det_sipm_nocam, 2e-2)
 
-        max_pmt = self.bh.get_high_idx(self.bh.xi_det_pmt, 2e-2)
-        max_sipm = self.bh.get_high_idx(self.bh.xi_det_sipm, 2e-2)
-        max_pmt_nc = self.bh.get_high_idx(tgammalst_comb_nc, 5e-4)
-        max_sipm_nc = self.bh.get_high_idx(tgammasst_comb_nc, 5e-4)
+        max_pmt = bh.get_high_idx(bh.xi_det_pmt, 2e-2)
+        max_sipm = bh.get_high_idx(bh.xi_det_sipm, 2e-2)
+        max_pmt_nc = bh.get_high_idx(tgammalst_comb_nc, 5e-4)
+        max_sipm_nc = bh.get_high_idx(tgammasst_comb_nc, 5e-4)
 
-        tmulst_tot = (np.cumsum(tmulst_atm)[max_pmt] - np.cumsum(tmulst_atm)[min_pmt]) * self.bh.xi_steps
-        tmumst_tot = (np.cumsum(tmumst_atm)[max_pmt] - np.cumsum(tmumst_atm)[min_pmt]) * self.bh.xi_steps
-        tmusst_tot = (np.cumsum(tmusst_atm)[max_sipm] - np.cumsum(tmusst_atm)[min_sipm]) * self.bh.xi_steps
+        tmulst_tot = (np.cumsum(tmulst_atm)[max_pmt] - np.cumsum(tmulst_atm)[min_pmt]) * bh.xi_steps
+        tmumst_tot = (np.cumsum(tmumst_atm)[max_pmt] - np.cumsum(tmumst_atm)[min_pmt]) * bh.xi_steps
+        tmusst_tot = (np.cumsum(tmusst_atm)[max_sipm] - np.cumsum(tmusst_atm)[min_sipm]) * bh.xi_steps
 
-        tmulst_tot_nc = (np.cumsum(tmulst_atm_nc)[max_pmt_nc] - np.cumsum(tmulst_atm_nc)[min_pmt_nc]) * self.bh.xi_steps
-        tmumst_tot_nc = (np.cumsum(tmumst_atm_nc)[max_pmt_nc] - np.cumsum(tmumst_atm_nc)[min_pmt_nc]) * self.bh.xi_steps
-        tmusst_tot_nc = (np.cumsum(tmusst_atm_nc)[max_sipm_nc] - np.cumsum(tmusst_atm_nc)[min_sipm_nc]) * self.bh.xi_steps
+        tmulst_tot_nc = (np.cumsum(tmulst_atm_nc)[max_pmt_nc] - np.cumsum(tmulst_atm_nc)[min_pmt_nc]) * bh.xi_steps
+        tmumst_tot_nc = (np.cumsum(tmumst_atm_nc)[max_pmt_nc] - np.cumsum(tmumst_atm_nc)[min_pmt_nc]) * bh.xi_steps
+        tmusst_tot_nc = (np.cumsum(tmusst_atm_nc)[max_sipm_nc] - np.cumsum(tmusst_atm_nc)[min_sipm_nc]) * bh.xi_steps
 
-        tgammalst_tot = (np.cumsum(tgammalst_atm)[max_pmt] - np.cumsum(tgammalst_atm)[min_pmt]) * self.bh.xi_steps
-        tgammamst_tot = (np.cumsum(tgammamst_atm)[max_pmt] - np.cumsum(tgammamst_atm)[min_pmt]) * self.bh.xi_steps
-        tgammasst_tot = (np.cumsum(tgammasst_atm)[max_sipm] - np.cumsum(tgammasst_atm)[min_sipm]) * self.bh.xi_steps
+        tgammalst_tot = (np.cumsum(tgammalst_atm)[max_pmt] - np.cumsum(tgammalst_atm)[min_pmt]) * bh.xi_steps
+        tgammamst_tot = (np.cumsum(tgammamst_atm)[max_pmt] - np.cumsum(tgammamst_atm)[min_pmt]) * bh.xi_steps
+        tgammasst_tot = (np.cumsum(tgammasst_atm)[max_sipm] - np.cumsum(tgammasst_atm)[min_sipm]) * bh.xi_steps
 
-        tgammalst_tot_nc = (np.cumsum(tgammalst_atm_nc)[max_pmt_nc] - np.cumsum(tgammalst_atm_nc)[min_pmt_nc]) * self.bh.xi_steps
-        tgammamst_tot_nc = (np.cumsum(tgammamst_atm_nc)[max_pmt_nc] - np.cumsum(tgammamst_atm_nc)[min_pmt_nc]) * self.bh.xi_steps
-        tgammasst_tot_nc = (np.cumsum(tgammasst_atm_nc)[max_sipm_nc] - np.cumsum(tgammasst_atm_nc)[min_sipm_nc]) * self.bh.xi_steps
+        tgammalst_tot_nc = (np.cumsum(tgammalst_atm_nc)[max_pmt_nc] - np.cumsum(tgammalst_atm_nc)[min_pmt_nc]) * bh.xi_steps
+        tgammamst_tot_nc = (np.cumsum(tgammamst_atm_nc)[max_pmt_nc] - np.cumsum(tgammamst_atm_nc)[min_pmt_nc]) * bh.xi_steps
+        tgammasst_tot_nc = (np.cumsum(tgammasst_atm_nc)[max_sipm_nc] - np.cumsum(tgammasst_atm_nc)[min_sipm_nc]) * bh.xi_steps
 
         ax.plot(
-            self.bh.xi_e_pmt,
-            (np.cumsum(tgammalst_comb)*self.bh.xi_steps - np.cumsum(tmulst_comb)*self.bh.xi_steps*tgammalst_tot/tmulst_tot)
-            / np.cumsum(tgammalst_comb) / self.bh.xi_steps,
+            bh.xi_e_pmt,
+            (np.cumsum(tgammalst_comb)*bh.xi_steps - np.cumsum(tmulst_comb)*bh.xi_steps*tgammalst_tot/tmulst_tot)
+            / np.cumsum(tgammalst_comb) / bh.xi_steps,
             "b-", label="LSTN (with window)", lw=1
         )
         ax.plot(
-            self.bh.xi_e_pmt_nocam,
-            (np.cumsum(tgammalst_comb_nc)*self.bh.xi_steps - np.cumsum(tmulst_comb_nc)*self.bh.xi_steps*tgammalst_tot_nc/tmulst_tot_nc)
-            / np.cumsum(tgammalst_comb_nc) / self.bh.xi_steps,
+            bh.xi_e_pmt_nocam,
+            (np.cumsum(tgammalst_comb_nc)*bh.xi_steps - np.cumsum(tmulst_comb_nc)*bh.xi_steps*tgammalst_tot_nc/tmulst_tot_nc)
+            / np.cumsum(tgammalst_comb_nc) / bh.xi_steps,
             "--", color="steelblue", label="LSTN (no window)"
         )
         ax.plot(
-            self.bh.xi_e_pmt,
-            (np.cumsum(tgammamst_comb)*self.bh.xi_steps - np.cumsum(tmumst_comb)*self.bh.xi_steps*tgammamst_tot/tmumst_tot)
-            / np.cumsum(tgammamst_comb) / self.bh.xi_steps,
+            bh.xi_e_pmt,
+            (np.cumsum(tgammamst_comb)*bh.xi_steps - np.cumsum(tmumst_comb)*bh.xi_steps*tgammamst_tot/tmumst_tot)
+            / np.cumsum(tgammamst_comb) / bh.xi_steps,
             "g-", label="MSTN (with window)", lw=1
         )
         ax.plot(
-            self.bh.xi_e_pmt_nocam,
-            (np.cumsum(tgammamst_comb_nc)*self.bh.xi_steps - np.cumsum(tmumst_comb_nc)*self.bh.xi_steps*tgammamst_tot_nc/tmumst_tot_nc)
-            / np.cumsum(tgammamst_comb_nc) / self.bh.xi_steps,
+            bh.xi_e_pmt_nocam,
+            (np.cumsum(tgammamst_comb_nc)*bh.xi_steps - np.cumsum(tmumst_comb_nc)*bh.xi_steps*tgammamst_tot_nc/tmumst_tot_nc)
+            / np.cumsum(tgammamst_comb_nc) / bh.xi_steps,
             "--", color="darkseagreen", label="MSTN (no window)"
         )
         ax.plot(
-            self.bh.xi_e_sipm,
-            (np.cumsum(tgammasst_comb)*self.bh.xi_steps - np.cumsum(tmusst_comb)*self.bh.xi_steps*tgammasst_tot/tmusst_tot)
-            / np.cumsum(tgammasst_comb) / self.bh.xi_steps,
-            "r-", label="SSTS", lw=1
+            bh.xi_e_sipm,
+            (np.cumsum(tgammasst_comb)*bh.xi_steps - np.cumsum(tmusst_comb)*bh.xi_steps*tgammasst_tot/tmusst_tot)
+            / np.cumsum(tgammasst_comb) / bh.xi_steps,
+            "r-", label="SSTS (with window)", lw=1
+        )
+        ax.plot(
+            bh.xi_e_sipm,
+            (np.cumsum(tgammasst_comb_nc)*bh.xi_steps - np.cumsum(tmusst_comb_nc)*bh.xi_steps*tgammasst_tot_nc/tmusst_tot_nc)
+            / np.cumsum(tgammasst_comb_nc) / bh.xi_steps,
+            "r-.", label="SSTS (no window)", lw=1
         )
 
         ax.legend(bbox_to_anchor=(0.99, 0.99), loc=1)
@@ -797,7 +816,7 @@ class MuonModel:
         return ax
 
     # ============================================================
-    # 4) PDE + transparency summary plot (old plot_pmt)
+    # 4) PDE + transparency summary plot 
     # ============================================================
 
     @classmethod
@@ -817,17 +836,19 @@ class MuonModel:
         tmulst_atm = lstn._muon_atm_on_grid(es)
         tmusst_atm = ssts._muon_atm_on_grid(es)
 
-        trans_lst = lstn._gamma_interp_on_grid(self.bh.ev2nm(es))
-        trans_sst = ssts._gamma_interp_on_grid(self.bh.ev2nm(es))
-
+        trans_lst = lstn._gamma_interp_on_grid(ev2nm(es))
+        trans_sst = ssts._gamma_interp_on_grid(ev2nm(es))
+        
+        bh = next(iter(models.values())).bh
+        
         created = ax is None
         if created:
             fig, ax = plt.subplots(2, 1, constrained_layout=True)
         
 
-        ax[1].plot(self.bh.qe_e, self.bh.qe_ham, "--", color="darkmagenta", label=r"$\xi_{pde}$ (PMT$_1$)")
-        ax[1].plot(self.bh.ete_e, self.bh.qe_ete, "--", color="teal", label=r"$\xi_{pde}$ (PMT$_2$)")
-        ax[1].plot(self.bh.si_e, self.bh.qe_si, "-", color="green", label=r"$\xi_{pde}$ (SiPM)")
+        ax[1].plot(bh.qe_pmt.energy_ev, bh.qe_pmt.values, "--", color="darkmagenta", label=r"$\xi_{pde}$ (PMT$_1$)")
+        ax[1].plot(bh.qe_ete.energy_ev, bh.qe_ete.values, "--", color="teal", label=r"$\xi_{pde}$ (PMT$_2$)")
+        ax[1].plot(bh.qe_sipm.energy_ev, bh.qe_sipm.values, "-", color="green", label=r"$\xi_{pde}$ (SiPM)")
         ax[1].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
 
         ax[0].plot(es, tmulst_atm, "-", color="b", label=r"$t_{\mu}$ (LST)")
@@ -847,7 +868,154 @@ class MuonModel:
         ax[1].set_xlim(xmin, xmax)
         cls._energy_to_wavelength_twin(ax[0], [700, 600, 500, 400, 300, 250], xmin, xmax)
 
-        cls._save_show(ax.get_figure(), filename=filename, show=show)
+        cls._save_show(ax[0].get_figure(), filename=filename, show=show)
+        return ax
+
+    # ============================================================
+    # 5) Atmospheric Transmission vs. zenith angle
+    # ============================================================
+
+    @classmethod
+    def plot_transmission_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None):
+
+        if models is None:
+            models = cls.build_standard_models()
+
+        lstn = models["LSTN"]
+        lsts = models["LSTS"]
+        mstn = models["MSTN"]
+        msts = models["MSTS"]        
+        ssts = models["SSTS"]
+
+        thetas = np.arange(0., 80., 5.) 
+
+        # evaluate on custom energy grid
+        
+        tmulstn_mols = [ float(np.sum(lstn.muon_transmission_mol(costheta=np.cos(theta*np.pi/180.)))*lstn.energy_step) for theta in thetas ]
+        tmulstn_aers = [ float(np.sum(lstn.muon_transmission_aer(costheta=np.cos(theta*np.pi/180.)))*lstn.energy_step) for theta in thetas ]
+        tmulstn_gamma = [ float(np.sum(lstn.gamma_transmission(costheta=np.cos(theta*np.pi/180.)))*lstn.energy_step) for theta in thetas ]
+        tmumstn_mols = [ float(np.sum(mstn.muon_transmission_mol(costheta=np.cos(theta*np.pi/180.)))*mstn.energy_step) for theta in thetas ]
+        tmumstn_aers = [ float(np.sum(mstn.muon_transmission_aer(costheta=np.cos(theta*np.pi/180.)))*mstn.energy_step) for theta in thetas ]
+        tmumstn_gamma = [ float(np.sum(mstn.gamma_transmission(costheta=np.cos(theta*np.pi/180.)))*mstn.energy_step) for theta in thetas ]
+        
+        tmulsts_mols = [ float(np.sum(lsts.muon_transmission_mol(costheta=np.cos(theta*np.pi/180.)))*lsts.energy_step) for theta in thetas ]
+        tmulsts_aers = [ float(np.sum(lsts.muon_transmission_aer(costheta=np.cos(theta*np.pi/180.)))*lsts.energy_step) for theta in thetas ]
+        tmulsts_gamma = [ float(np.sum(lsts.gamma_transmission(costheta=np.cos(theta*np.pi/180.)))*lsts.energy_step) for theta in thetas ]        
+        tmumsts_mols = [ float(np.sum(msts.muon_transmission_mol(costheta=np.cos(theta*np.pi/180.)))*msts.energy_step) for theta in thetas ]
+        tmumsts_aers = [ float(np.sum(msts.muon_transmission_aer(costheta=np.cos(theta*np.pi/180.)))*msts.energy_step) for theta in thetas ]
+        tmumsts_gamma = [ float(np.sum(msts.gamma_transmission(costheta=np.cos(theta*np.pi/180.)))*msts.energy_step) for theta in thetas ]        
+        tmussts_mols = [ float(np.sum(ssts.muon_transmission_mol(costheta=np.cos(theta*np.pi/180.)))*ssts.energy_step) for theta in thetas ]
+        tmussts_aers = [ float(np.sum(ssts.muon_transmission_aer(costheta=np.cos(theta*np.pi/180.)))*ssts.energy_step) for theta in thetas ] 
+        tmussts_gamma = [ float(np.sum(ssts.gamma_transmission(costheta=np.cos(theta*np.pi/180.)))*ssts.energy_step) for theta in thetas ]       
+        
+        #bh = next(iter(models.values())).bh
+        
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(3, 1, constrained_layout=True)
+        
+
+        ax[0].plot(thetas, tmulstn_mols,"-", color="b", label=r"$B_{\mu,mol}$ (LSTN)")
+        ax[0].plot(thetas, tmumstn_mols,"-", color="cornflowerblue", label=r"$B_{\mu,mol}$ (MSTN)")
+        ax[0].plot(thetas, tmulsts_mols,"-", color="r", label=r"$B_{\mu,mol}$ (LSTS)")
+        ax[0].plot(thetas, tmumsts_mols,"-", color="darkorange", label=r"$B_{\mu,mol}$ (MSTS)")
+        ax[0].plot(thetas, tmussts_mols,"-", color="gold", label=r"$B_{\mu,mol}$ (SSTS)")
+        ax[0].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
+
+        ax[1].plot(thetas, tmulstn_aers, "-", color="b", label=r"$B_{\mu,aer}$ (LSTN)")
+        ax[1].plot(thetas, tmumstn_aers,"-", color="cornflowerblue", label=r"$B_{\mu,aer}$ (MSTN)")        
+        ax[1].plot(thetas, tmulsts_aers, "-", color="r", label=r"$B_{\mu,aer}$ (LSTS)")
+        ax[1].plot(thetas, tmumsts_aers,"-", color="darkorange", label=r"$B_{\mu,aer}$ (MSTS)")
+        ax[1].plot(thetas, tmussts_aers,"-", color="gold", label=r"$B_{\mu,aer}$ (SSTS)")        
+        ax[1].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+
+        ax[2].plot(thetas, tmulstn_gamma, "-", color="b", label=r"$B_{\gamma,atm}$ (LSTN)")
+        ax[2].plot(thetas, tmumstn_gamma,"-", color="cornflowerblue", label=r"$B_{\gamma,atm}$ (MSTN)")        
+        ax[2].plot(thetas, tmulsts_gamma, "-", color="r", label=r"$B_{\gamma,atm}$ (LSTS)")
+        ax[2].plot(thetas, tmumsts_gamma,"-", color="darkorange", label=r"$B_{\gamma,atm}$ (MSTS)")
+        ax[2].plot(thetas, tmussts_gamma,"-", color="gold", label=r"$B_{\gamma,atm}$ (SSTS)")        
+        ax[2].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+
+
+        ax[0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[1].set_ylabel(r"Pointing zenith angle ($^\circ$)")
+        ax[0].set_ylabel(r"$B_{\mu}$(mol)")
+        ax[1].set_ylabel(r"$B_{\mu}$(aer)")
+        ax[2].set_ylabel(r"$B_{\gamma}(atm)$")
+        #ax[0].set_ylim(0.0, 1.05)
+        #ax[1].set_ylim(0.0, 0.5)
+
+        cls._save_show(ax[0].get_figure(), filename=filename, show=show)
+        return ax
+
+    # ============================================================
+    # 6) Total bandwidth vs. zenith angle
+    # ============================================================
+
+    @classmethod
+    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None):
+
+        if models is None:
+            models = cls.build_standard_models()
+
+        lstn = models["LSTN"]
+        lsts = models["LSTS"]
+        mstn = models["MSTN"]
+        msts = models["MSTS"]        
+        ssts = models["SSTS"]
+
+        thetas = np.arange(0., 80., 5.) 
+
+        # evaluate on custom energy grid
+        
+        Blstn_mu = [ float(lstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Blstn_gamma = [ float(lstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Bmstn_mu = [ float(mstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Bmstn_gamma = [ float(mstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        
+        Blsts_mu = [ float(lsts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Blsts_gamma = [ float(lsts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]        
+        Bmsts_mu = [ float(msts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Bmsts_gamma = [ float(msts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]        
+        Bssts_mu = [ float(ssts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
+        Bssts_gamma = [ float(ssts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]       
+        
+        #bh = next(iter(models.values())).bh
+        
+        created = ax is None
+        if created:
+            fig, ax = plt.subplots(2, 2, constrained_layout=True)
+        
+        ax[0].plot(thetas, Blstn_mu,"-", color="b", label=r"$B_{\mu,mol}$ (LSTN)")
+        ax[0].plot(thetas, Bmstn_mu,"-", color="cornflowerblue", label=r"$B_{\mu,mol}$ (MSTN)")
+        ax[0].plot(thetas, Blsts_mu,"-", color="r", label=r"$B_{\mu,mol}$ (LSTS)")
+        ax[0].plot(thetas, Bmsts_mu,"-", color="darkorange", label=r"$B_{\mu,mol}$ (MSTS)")
+        ax[0].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
+
+        ax[1].plot(thetas, Bssts_mu,"-", color="gold", label=r"$B_{\mu,mol}$ (SSTS)")
+        ax[1].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
+        
+        ax[2].plot(thetas, Blstn_gamma, "-", color="b", label=r"$B_{\gamma,atm}$ (LSTN)")
+        ax[2].plot(thetas, Bmstn_gamma,"-", color="cornflowerblue", label=r"$B_{\gamma,atm}$ (MSTN)")        
+        ax[2].plot(thetas, Blsts_gamma, "-", color="r", label=r"$B_{\gamma,atm}$ (LSTS)")
+        ax[2].plot(thetas, Bmsts_gamma,"-", color="darkorange", label=r"$B_{\gamma,atm}$ (MSTS)")
+        ax[2].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+
+        ax[3].plot(thetas, Bssts_gamma,"-", color="gold", label=r"$B_{\gamma,atm}$ (SSTS)")        
+        ax[3].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+
+        ax[0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[1].set_ylabel(r"Pointing zenith angle ($^\circ$)")
+        ax[2].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[3].set_ylabel(r"Pointing zenith angle ($^\circ$)")
+        ax[0].set_ylabel(r"$B_{\mu}$")
+        ax[1].set_ylabel(r"$B_{\mu}$")        
+        ax[2].set_ylabel(r"$B_{\gamma}$")
+        ax[3].set_ylabel(r"$B_{\gamma}$")        
+        #ax[0].set_ylim(0.0, 1.05)
+        #ax[1].set_ylim(0.0, 0.5)
+
+        cls._save_show(ax[0].get_figure(), filename=filename, show=show)
         return ax
 
 
