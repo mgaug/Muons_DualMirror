@@ -14,11 +14,11 @@ class UncertaintyConfig:
     sigma_Haer: float = 10.0        # see Table 4 of https://academic.oup.com/mnras/article/515/3/4520/6608884
     sigma_gamma: float = 0.03       # see Table 4 of https://academic.oup.com/mnras/article/515/3/4520/6608884
     sigma_AE: float = 0.46          # see Fig. 3 of https://www.aanda.org/articles/aa/full_html/2023/05/aa45787-22/aa45787-22.html
-    sigma_scale_h: float = 500      # Average summer at La Palma is 10300 m, compared with 9500 for Average Winter, and weighted for relative contribution of Summer months JJA
-    sigma_theta_c_deg: float = 0.2  # Useful Cherenkov angles range from 0.8 to 1.3 deg.
+    sigma_scale_h: float = 200      # Average summer at La Palma is 10300 m, compared with 9500 for Average Winter, and weighted for relative contribution of Summer months JJA
+    sigma_theta_c_deg: float = 0.15 # Useful Cherenkov angles range from 0.8 to 1.3 deg.
     sigma_rhoR_min: float = 0.05    # Uncertainty of rhoR reconstruction
-    sigma_HPBL: float = 200.0       # best guess, see Figure 15 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
-    sigma_HElterman: float = 200.0  # best guess 
+    sigma_HPBL: float = 100.0       # best guess, see Figure 15 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
+    sigma_HElterman: float = 100.0  # best guess 
 
     rel_mirror_unc: float = 0.01    # best guess 
     rel_window_unc: float = 0.01    # best guess 
@@ -26,6 +26,31 @@ class UncertaintyConfig:
     n_mc: int = 200                 # number of MC simulations
     random_seed: int | None = 12345 # default seed for random number generator
 
+    def summary(self):
+        return {
+            "Muon Cherenkov angle (deg)": self.sigma_theta_c_deg,
+            "Minimum impact distance (rho/R)": self.sigma_rhoR_min,
+            "Molecular density profile scale height (m)": self.sigma_scale_h,
+            "VAOD at 532 nm": self.sigma_vaod,
+            "Height of PBL (m)": self.sigma_HPBL,
+            "Aerosol density scale height below PBL (m)": self.sigma_HElterman,
+            "Aerosol density scale height above PBL (m)": self.sigma_Haer,
+            "Exponent of cos(theta) dependency of Haer": self.sigma_gamma,
+            "Angstrom Exponent": self.sigma_AE,
+            "Relative mirror reflectance": self.rel_mirror_unc,
+            "Relative window transparency": self.rel_window_unc,
+            "Number of simulations": self.n_mc,
+        }
+    
+    def print_summary(self):
+        s = self.summary()
+        print("Uncertainties summary")
+        print("-" * 70)
+        for k, v in s.items():
+            print(f"{k:60s}: {v}")
+        print('\n')
+
+    
 
 class MuonModel:
     """
@@ -43,16 +68,16 @@ class MuonModel:
         telescope_name: str | None = "LST",  #  Telescope name 
         atmosphere: AtmosphereHelper | None = None, # optional AtmospherHelper class
         bandwidth: BandwidthHelper | None = None,            
-        obs_height: float = 2200.0,   # Telescope altitude asl.
+        tel_height: float = 2200.0,   # Telescope altitude asl.
         Hgamma: float | None = None,  # Average gamma-ray emission height 
-            scale_h: float = 9500.0,      # Average molecular density scale height
+        scale_h: float = 9500.0,      # Average molecular density scale height
         atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat",  # default atmospheric extinction file 
         theta_tel_deg: float = 0.0,   # Telescope observing zenith angle 
         theta_c_deg: float = 1.1,     # muon Cherenkov angle in deg.
         rhoR_min: float = 0.1,        # lower muon impact distance cut (in relative rhoR = rho/R1)
         vaod: float = 0.03,           # default vertical aerosol optical depth at 532 nm 
         Haer_0: float = 577.0,        # default aerosol scale height above HPBL, at zenith
-        gamma: float = 0.77           # default cos(zenith) exponent of Haer scaling 
+        gamma: float = 0.77,          # default cos(zenith) exponent of Haer scaling 
         AE: float = 1.45,             # default Angstrom exponent of ground-layer aerosols
         HPBL: float = 800.0,          # default boundary layer height at zenith
         HElterman: float = 1200.0,    # default aerosol scale height below HBPL 
@@ -70,9 +95,9 @@ class MuonModel:
             self.atm = atmosphere
         else:
             if Hgamma is None:
-                Hgamma = self._default_Hgamma(self.telescope_name, obs_height)
+                Hgamma = self._default_Hgamma(self.telescope_name, tel_height)
             self.atm = AtmosphereHelper(
-                obs_height=obs_height,
+                obs_height=tel_height,
                 Hgamma=Hgamma,
                 atm_file=atm_file,
                 R1=tel.R1, Robst=tel.Rhole
@@ -93,7 +118,7 @@ class MuonModel:
         
         self.vaod = float(vaod)                         # total VAOD at 532 nm
         self.gamma = float(gamma)
-        self.Haer = float(Haer_0) * costheta ** gamma   # scale height of upper part above PBL, see https://academic.oup.com/mnras/article/515/3/4520/6608884, eq. 27
+        self.Haer = float(Haer_0) * self.costheta ** gamma   # scale height of upper part above PBL, see https://academic.oup.com/mnras/article/515/3/4520/6608884, eq. 27
         self.AE = float(AE)
         self.HPBL = float(HPBL)                         # vertical height of PBL above ground, frontier between HElterman and Haer scale height, see p. 4532 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
         self.HElterman = float(HElterman)               # scale height of lowest part of PBL, default is the Elterman model https://opg.optica.org/ao/abstract.cfm?uri=ao-3-6-745
@@ -103,7 +128,7 @@ class MuonModel:
 
     @classmethod
     def from_LSTN(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200.,
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
         
         tel_object = tel.LST()
@@ -117,9 +142,9 @@ class MuonModel:
         # La-Palma like aerosol layer following the clear-night aerosol model 
         # of https://academic.oup.com/mnras/article/515/3/4520/6608884, Section 6 
 
-        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
+        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, tel_height=tel_height,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
-                   vaod=0.03, AE=1.45, Haer=577., gamma=0.77, HPBL_0=800. * costheta ** 0.6,HElterman=1200,
+                   vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77, HPBL=800. * costheta ** 0.6,HElterman=1200,
                    )
 
     @classmethod
@@ -208,21 +233,21 @@ class MuonModel:
         raise ValueError(f"Unknown telescope name: {name}")
 
     @staticmethod
-    def _default_Hgamma(name: str, obs_h: float) -> float:
+    def _default_Hgamma(name: str, tel_h: float) -> float:
         name = name.upper()
         if name == "LST":
             # Median Hgamma for zenith angle of 0 deg. is about 11 km, in the energy range below 1 TeV
             # see Fig. 1 of https://www.mdpi.com/2072-4292/17/6/1074
-            return 11000.0 - obs_h
+            return 11000.0 - tel_h
         if name in ("MST","SCT"):
             # Median Hgamma for zenith angle of 0 deg. is about 10 km, in the energy range from 500 GeV to 10 TeV
             # see Fig. 1 of https://www.mdpi.com/2072-4292/17/6/1074
-            return 10000.0 - obs_h
+            return 10000.0 - tel_h
         if name == "SST":
             # Median Hgamma for zenith angle of 0 deg. is about 9 km, in the energy range above 1 TeV
             # see Fig. 1 of https://www.mdpi.com/2072-4292/17/6/1074       
-            return 9000.0 - obs_h
-        return 10000.0 - obs_h
+            return 9000.0 - tel_h
+        return 10000.0 - tel_h
 
     @staticmethod
     def _get_Robst(tel: tel.Telescope) -> float:
@@ -296,19 +321,23 @@ class MuonModel:
     def gamma_transmission(self, costheta=1.):
         return (self.gamma_transmission_nominal**costheta).copy()
 
-    def muon_transmission_mol(self, rhoR_min=None, costheta=None, thetac=None, scale_h=None, **kwargs):
+    def muon_transmission_mol(self, rhoR_min=None, costheta=None, thetac=None, scale_h=None, debug=False, **kwargs):
         rhoR_min = self.rhoR_min if rhoR_min is None else rhoR_min
         costheta = self.costheta if costheta is None else costheta
         thetac = self.thetac if thetac is None else thetac
         scale_h = self.scale_h if scale_h is None else scale_h
 
+        if debug:
+            print ('rhoR_min=',rhoR_min,' costheta=',costheta,' thetac=', thetac, ' scale_h=',scale_h)
+        
         return self.atm.av_transmission_rho_mol(
             self.energy,
             thetac=thetac,
             costheta=costheta,
             scale_h=scale_h,
-            rho_min=rhoR_min,
-            rho_max=1.,
+            rhoR_min=rhoR_min,
+            rhoR_max=1.,
+            debug=debug,
             **kwargs,
         )
 
@@ -323,6 +352,7 @@ class MuonModel:
         AE=None,
         HPBL=None,
         HElterman=None,
+        debug=False,
         **kwargs,
     ):
         rhoR_min = self.rhoR_min if rhoR_min is None else rhoR_min
@@ -330,11 +360,17 @@ class MuonModel:
         thetac = self.thetac if thetac is None else thetac
 
         vaod = self.vaod if vaod is None else vaod
-        Haer = self.Haer if Haer is None else Haer
-        gamma = self.gamma if gamma is None else gamma
+        if gamma is not None and Haer is not None:
+            Haer = float(Haer) * costheta ** gamma
+        else:
+            Haer = self.Haer if Haer is None else Haer
+
         AE = self.AE if AE is None else AE
         HPBL = self.HPBL if HPBL is None else HPBL
         HElterman = self.HElterman if HElterman is None else HElterman
+
+        if debug:
+            print ('rhoR_min=',rhoR_min,' costheta=',costheta,' thetac=', thetac, ' vaod=',vaod, ' Haer=',Haer, ' AE=', AE,' HPBL=',HPBL,' HElterman=',HElterman)
 
         return self.atm.av_transmission_rho_aer(
             self.energy,
@@ -342,18 +378,22 @@ class MuonModel:
             costheta=costheta,
             vaod=vaod,
             AE=AE,
-            rho_min=rhoR_min,
-            rho_max=1.0,
+            rhoR_min=rhoR_min,
+            rhoR_max=1.0,
             Haer=Haer,
-            gamma=gamma,
             HPBL=HPBL,
             HElterman=HElterman,
+            debug=debug,
             **kwargs,
         )
 
-    def muon_transmission(self, **kwargs):
-        tmol = self.muon_transmission_mol(**kwargs)
-        taer = self.muon_transmission_aer(**kwargs)
+    def muon_transmission(self, debug=False, **kwargs):
+        tmol = self.muon_transmission_mol(debug=debug,**kwargs)
+        if debug:
+            print('tmol=',tmol)
+        taer = self.muon_transmission_aer(debug=debug,**kwargs)
+        if debug:
+            print('taer=',taer)
         return tmol * taer
 
     def gamma_response(self, **kwargs):
@@ -385,60 +425,75 @@ class MuonModel:
 
     def summary(self):
         return {
-            "telescope": self.telescope_name,
-            "detector_type": self.detector_type,
-            "R1_m": self.tel.R1,
-            "Rhole_m": self.tel.Rhole,
-            "theta_tel_deg": self.theta_tel_deg,
-            "theta_c_deg": self.theta_c_deg,
-            "rhoR_min": self.rhoR_min,
-            "costheta": self.costheta,
-            "obs_h_m": self.atm.obs_h,
-            "Hgamma_m": self.atm.Hgamma,
-            "scale_h_m": self.scale_h,
-            "atm_file": self.atm.atm_file,
-            "vaod": self.vaod,
-            "Haer": self.Haer,
-            "gamma": self.gamma,
-            "AE": self.AE,
-            "HPBL_m": self.HPBL,
-            "HElterman_m": self.HElterman,
-            "n_energy": len(self.energy),
+            "Telescope": self.telescope_name,
+            "Detector_type": self.detector_type,
+            "Radius of M1 (m) ": self.tel.R1,
+            "Radius of central hole (m)": self.tel.Rhole,
+            "Telescope zenith angle (deg)": self.theta_tel_deg,
+            "Cosine of zenith angle": self.costheta,
+            "Muon Cherenkov angle (deg)": self.theta_c_deg,
+            "Minimum impact distance (rho/R)": self.rhoR_min,
+            "Telescope altitude (m asl.)": self.atm.obs_h,
+            "Molecular density profile scale height (m)": self.scale_h,
+            "VAOD at 532 nm": self.vaod,
+            "Height of PBL (m)": self.HPBL,
+            "Aerosol density scale height below PBL (m)": self.HElterman,
+            "Aerosol density scale height above PBL (m)": self.Haer,
+            "Exponent of cos(theta) dependency of Haer": self.gamma,
+            "Angstrom Exponent": self.AE,
+            "Reference atmospheric extinction file for gamma-rays": self.atm.atm_file,
+            "Median height of observed Cherenkov light from gamma showers": self.atm.Hgamma,
+            "number of energy bins": len(self.energy),
         }
 
     def print_summary(self):
         s = self.summary()
         print("MuonModel summary")
-        print("-" * 50)
+        print("-" * 70)
         for k, v in s.items():
-            print(f"{k:16s}: {v}")
+            print(f"{k:60s}: {v}")
+        print('\n')            
 
-    def propagate_uncertainty(self, cfg: UncertaintyConfig | None = None, **kwargs):
+    def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc = None, **kwargs):
         if cfg is None:
             cfg = UncertaintyConfig()
 
         rng = np.random.default_rng(cfg.random_seed)
 
-        bmu = np.empty(cfg.n_mc, dtype=float)
-        bgam = np.empty(cfg.n_mc, dtype=float)
-        ratio = np.empty(cfg.n_mc, dtype=float)
+        if n_mc is None:
+            n_mc = cfg.n_mc
 
-        for i in range(cfg.n_mc):
+        bmu = np.empty(n_mc, dtype=float)
+        bgam = np.empty(n_mc, dtype=float)
+        ratio = np.empty(n_mc, dtype=float)
+
+        if costheta is None:
+            costheta = self.costheta
+
+        if verbose: 
+            print ('Simulate uncertainties for: ')
+            self.print_summary()
+            cfg.print_summary()
+            print ('Absolute uncertainties of QE for energies ',self.energy,' eV : ',self.qe_sigma)
+            print ('costheta: ', costheta)
+            print ('number simulations: ', n_mc,'\n')            
+        
+        for i in range(n_mc):
             scale_h_i = max(100.0, rng.normal(self.scale_h, cfg.sigma_scale_h))            
-            vaod_i = max(1e-1, rng.normal(self.vaod, cfg.sigma_vaod))
+            vaod_i = max(0., rng.normal(self.vaod, cfg.sigma_vaod))
             Haer_i = max(1000., rng.normal(self.Haer, cfg.sigma_Haer))
             gamma_i = max(1.5, rng.normal(self.gamma, cfg.sigma_gamma))            
+            Haer_i = float(Haer_i) * costheta ** gamma_i
             AE_i = rng.normal(self.AE, cfg.sigma_AE)
             theta_c_i = min(1.3, max(0.8, rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg)))
             rhoR_min_i = max(0.0, rng.normal(self.rhoR_min, cfg.sigma_rhoR_min))
             HPBL_i = max(30.0, rng.normal(self.HPBL, cfg.sigma_HPBL))
             HElterman_i = max(100.0, rng.normal(self.HElterman, cfg.sigma_HElterman))
 
-            if self.detector_type == "PMT":
-                qe_i = self.qe_nominal + rng.normal(0.0, self.qe_sigma, size=self.qe_nominal.shape)
-            else:
-                qe_i = self.qe_nominal.copy()
+            # QE uncertainties are absolute uncertainties 
+            qe_i = self.qe_nominal + rng.normal(0.0, self.qe_sigma, size=self.qe_nominal.shape)
 
+            # Mirror and window uncertainties are treated as relative uncertainties             
             mirror_i = self.mirror_nominal * (
                 1.0 + rng.normal(0.0, cfg.rel_mirror_unc, size=self.mirror_nominal.shape)
             )
@@ -452,7 +507,7 @@ class MuonModel:
                 self.atm.av_transmission_rho_mol(
                     self.energy,
                     thetac=np.deg2rad(theta_c_i),
-                    costheta=self.costheta,
+                    costheta=costheta,
                     rhoR_min=rhoR_min_i,
                     scale_h=scale_h_i,
                     **kwargs,
@@ -461,11 +516,10 @@ class MuonModel:
                 self.atm.av_transmission_rho_aer(
                     self.energy,
                     thetac=np.deg2rad(theta_c_i),
-                    costheta=self.costheta,
+                    costheta=costheta,
                     rhoR_min=rhoR_min_i,
                     vaod=vaod_i,
                     Haer=Haer_i,
-                    gamma=gamma_i,
                     AE=AE_i,
                     HPBL=HPBL_i,
                     HElterman=HElterman_i,
@@ -499,6 +553,14 @@ class MuonModel:
             },
         }
 
+    def uncertainties_std(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc=None, **kwargs):
+
+        unc = self.simulate_uncertainty(cfg, costheta=costheta, verbose=verbose, n_mc=n_mc, **kwargs)
+        unc_B_mu = unc["B_mu"]
+        unc_B_gamma = unc["B_gamma"]
+        unc_ratio = unc["ratio_gamma_to_muon"]
+        return unc_B_mu['std'], unc_B_gamma['std'], unc_ratio['std']
+    
 
     @staticmethod
     def build_standard_models(theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500.):
@@ -876,7 +938,7 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_transmission_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None):
+    def plot_transmission_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False):
 
         if models is None:
             models = cls.build_standard_models()
@@ -887,7 +949,7 @@ class MuonModel:
         msts = models["MSTS"]        
         ssts = models["SSTS"]
 
-        thetas = np.arange(0., 80., 5.) 
+        thetas = np.arange(0., 75., 5.) 
 
         # evaluate on custom energy grid
         
@@ -938,7 +1000,8 @@ class MuonModel:
 
 
         ax[0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
-        ax[1].set_ylabel(r"Pointing zenith angle ($^\circ$)")
+        ax[1].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[2].set_xlabel(r"Pointing zenith angle ($^\circ$)")
         ax[0].set_ylabel(r"$B_{\mu}$(mol)")
         ax[1].set_ylabel(r"$B_{\mu}$(aer)")
         ax[2].set_ylabel(r"$B_{\gamma}(atm)$")
@@ -953,7 +1016,7 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None):
+    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, n_mc=5, n_thetas=10):
 
         if models is None:
             models = cls.build_standard_models()
@@ -964,58 +1027,106 @@ class MuonModel:
         msts = models["MSTS"]        
         ssts = models["SSTS"]
 
-        thetas = np.arange(0., 80., 5.) 
+        print ("Standard models created: LSTN, LSTS, MSTN, MSTS, SSTS")
+
+        thetas = np.linspace(0., 75., n_thetas)
 
         # evaluate on custom energy grid
         
-        Blstn_mu = [ float(lstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Blstn_gamma = [ float(lstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Bmstn_mu = [ float(mstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Bmstn_gamma = [ float(mstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        
-        Blsts_mu = [ float(lsts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Blsts_gamma = [ float(lsts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]        
-        Bmsts_mu = [ float(msts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Bmsts_gamma = [ float(msts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]        
-        Bssts_mu = [ float(ssts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]
-        Bssts_gamma = [ float(ssts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ]       
-        
-        #bh = next(iter(models.values())).bh
-        
+        Blstn_mu = np.array([ float(lstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created muon bandwidths for: LSTN")        
+        Blstn_gamma = np.array([ float(lstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created gamma bandwidths for: LSTN")
+        Bmstn_mu = np.array([ float(mstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created muon bandwidths for: MSTN")                                             
+        Bmstn_gamma = np.array([ float(mstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created gamma bandwidths for: MSTN")
+        Blsts_mu = np.array([ float(lsts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created muon bandwidths for: LSTS")                                             
+        Blsts_gamma = np.array([ float(lsts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created gamma bandwidths for: LSTS")
+        Bmsts_mu = np.array([ float(msts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created muon bandwidths for: MSTS")                                             
+        Bmsts_gamma = np.array([ float(msts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created gamma bandwidths for: MSTS")
+        Bssts_mu = np.array([ float(ssts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created muon bandwidths for: SSTS")                                             
+        Bssts_gamma = np.array([ float(ssts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        print ("Created gamma bandwidths for: SSTS")                                             
+
+        if uncertainties:
+
+            verbose = True 
+            
+            print ('Start calculating uncertainties with n_mc=',n_mc)
+            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = zip(*[ lstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            print ("Created uncertainties for: LSTN")                    
+            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = zip(*[ mstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            print ("Created uncertainties for: MSTN")                                
+            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = zip(*[ lsts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            print ("Created uncertainties for: LSTS")                                
+            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = zip(*[ msts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            print ("Created uncertainties for: MSTS")                                
+            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = zip(*[ ssts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            print ("Created uncertainties for: SSTS")
+
+        else:
+
+            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = np.ones_like(thetas)*0.005, np.ones_like(thetas)*0.004, np.ones_like(thetas)*0.006   # best guesses for uncertainties 
+            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = np.ones_like(thetas)*0.005, np.ones_like(thetas)*0.004, np.ones_like(thetas)*0.006   # best guesses for uncertainties 
+            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = np.ones_like(thetas)*0.005, np.ones_like(thetas)*0.004, np.ones_like(thetas)*0.006   # best guesses for uncertainties 
+            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = np.ones_like(thetas)*0.005, np.ones_like(thetas)*0.004, np.ones_like(thetas)*0.006   # best guesses for uncertainties 
+            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = np.ones_like(thetas)*0.005, np.ones_like(thetas)*0.004, np.ones_like(thetas)*0.006   # best guesses for uncertainties 
+            
         created = ax is None
         if created:
-            fig, ax = plt.subplots(2, 2, constrained_layout=True)
+            fig, ax = plt.subplots(3, 2, constrained_layout=True)
+
+        add  = 1.*np.ones_like(thetas)
+            
+        ax[0,0].errorbar(thetas, Blstn_mu, yerr=Blstn_mu_sigma,fmt='',color="b", marker='o', label=r"$B_{\mu}$ (LSTN)")
+        ax[0,0].errorbar(thetas+add, Bmstn_mu, yerr=Bmstn_mu_sigma,fmt='', color="cornflowerblue",marker='v', label=r"$B_{\mu}$ (MSTN)")
+        ax[0,0].errorbar(thetas+2*add, Blsts_mu, yerr=Blsts_mu_sigma,fmt='', color="r", marker='s', label=r"$B_{\mu}$ (LSTS)")
+        ax[0,0].errorbar(thetas+3*add, Bmsts_mu, yerr=Bmsts_mu_sigma,fmt='', color="darkorange", marker='^', label=r"$B_{\mu}$ (MSTS)")
+        ax[0,0].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
+
+        ax[0,1].errorbar(thetas, Bssts_mu, yerr=Bssts_mu_sigma,fmt='', color="gold", label=r"$B_{\mu}$ (SSTS)")
+        ax[0,1].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
         
-        ax[0].plot(thetas, Blstn_mu,"-", color="b", label=r"$B_{\mu,mol}$ (LSTN)")
-        ax[0].plot(thetas, Bmstn_mu,"-", color="cornflowerblue", label=r"$B_{\mu,mol}$ (MSTN)")
-        ax[0].plot(thetas, Blsts_mu,"-", color="r", label=r"$B_{\mu,mol}$ (LSTS)")
-        ax[0].plot(thetas, Bmsts_mu,"-", color="darkorange", label=r"$B_{\mu,mol}$ (MSTS)")
-        ax[0].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
+        ax[1,0].errorbar(thetas, Blstn_gamma, yerr=Blstn_gamma_sigma, fmt='', color="b", marker='o', label=r"$B_{\gamma}$ (LSTN)")
+        ax[1,0].errorbar(thetas+add, Bmstn_gamma, yerr=Bmsts_gamma_sigma,fmt='', color="cornflowerblue",marker='v', label=r"$B_{\gamma}$ (MSTN)")        
+        ax[1,0].errorbar(thetas+2*add, Blsts_gamma, yerr=Blsts_gamma_sigma,fmt='', color="r", marker='s', label=r"$B_{\gamma}$ (LSTS)")
+        ax[1,0].errorbar(thetas+3*add, Bmsts_gamma, yerr=Bmsts_gamma_sigma,fmt='', color="darkorange", marker='^', label=r"$B_{\gamma}$ (MSTS)")
+        ax[1,0].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
 
-        ax[1].plot(thetas, Bssts_mu,"-", color="gold", label=r"$B_{\mu,mol}$ (SSTS)")
-        ax[1].legend(bbox_to_anchor=(0.8, 0.82), loc=2)
-        
-        ax[2].plot(thetas, Blstn_gamma, "-", color="b", label=r"$B_{\gamma,atm}$ (LSTN)")
-        ax[2].plot(thetas, Bmstn_gamma,"-", color="cornflowerblue", label=r"$B_{\gamma,atm}$ (MSTN)")        
-        ax[2].plot(thetas, Blsts_gamma, "-", color="r", label=r"$B_{\gamma,atm}$ (LSTS)")
-        ax[2].plot(thetas, Bmsts_gamma,"-", color="darkorange", label=r"$B_{\gamma,atm}$ (MSTS)")
-        ax[2].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+        ax[1,1].errorbar(thetas, Bssts_gamma, yerr=Bssts_gamma_sigma,fmt='', color="gold", marker='*', label=r"$B_{\gamma}$ (SSTS)")        
+        ax[1,1].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
 
-        ax[3].plot(thetas, Bssts_gamma,"-", color="gold", label=r"$B_{\gamma,atm}$ (SSTS)")        
-        ax[3].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+        ax[2,0].errorbar(thetas, Blstn_gamma/Blstn_mu, yerr=Blstn_ratio_sigma, fmt='', color="b", marker='o', label=r"$B_{\gamma}/B_{\mu}$ (LSTN)")
+        ax[2,0].errorbar(thetas+add, Bmstn_gamma/Bmstn_mu, yerr=Bmsts_ratio_sigma,fmt='', color="cornflowerblue",marker='v', label=r"$B_{\gamma}/B_{\mu}$ (MSTN)")        
+        ax[2,0].errorbar(thetas+2*add, Blsts_gamma/Blsts_mu, yerr=Blsts_ratio_sigma,fmt='', color="r", marker='s', label=r"$B_{\gamma}/B_{\mu}$ (LSTS)")
+        ax[2,0].errorbar(thetas+3*add, Bmsts_gamma/Bmsts_mu, yerr=Bmsts_ratio_sigma,fmt='', color="darkorange", marker='^', label=r"$B_{\gamma}/B_{\mu}$ (MSTS)")
+        ax[2,0].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
 
-        ax[0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
-        ax[1].set_ylabel(r"Pointing zenith angle ($^\circ$)")
-        ax[2].set_xlabel(r"Pointing zenith angle ($^\circ$)")
-        ax[3].set_ylabel(r"Pointing zenith angle ($^\circ$)")
-        ax[0].set_ylabel(r"$B_{\mu}$")
-        ax[1].set_ylabel(r"$B_{\mu}$")        
-        ax[2].set_ylabel(r"$B_{\gamma}$")
-        ax[3].set_ylabel(r"$B_{\gamma}$")        
-        #ax[0].set_ylim(0.0, 1.05)
+        ax[2,1].errorbar(thetas, Bssts_gamma/Bssts_mu, yerr=Bssts_ratio_sigma,fmt='', color="gold", marker='*', label=r"$B_{\gamma}/B_{\mu}$ (SSTS)")        
+        ax[2,1].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
+
+        ax[0,0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[0,1].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[1,0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[1,1].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[2,0].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[2,1].set_xlabel(r"Pointing zenith angle ($^\circ$)")
+        ax[0,0].set_ylabel(r"$B_{\mu}$")
+        ax[0,1].set_ylabel(r"$B_{\mu}$")        
+        ax[1,0].set_ylabel(r"$B_{\gamma}$")
+        ax[1,1].set_ylabel(r"$B_{\gamma}$")        
+        ax[2,0].set_ylabel(r"$B_{\gamma}/B_{\mu}$")
+        ax[2,1].set_ylabel(r"$B_{\gamma}/B_{\mu}$")         
+       #ax[0].set_ylim(0.0, 1.05)
         #ax[1].set_ylim(0.0, 0.5)
 
-        cls._save_show(ax[0].get_figure(), filename=filename, show=show)
+        cls._save_show(ax[0,0].get_figure(), filename=filename, show=show)
         return ax
 
 
@@ -1341,18 +1452,4 @@ print("Muon bandwidth:", model.bandwidth_muon())
 print("Gamma bandwidth:", model.bandwidth_gamma())
 print("Ratio:", model.ratio_gamma_to_muon())
 
-unc = model.propagate_uncertainty(
-    UncertaintyConfig(
-        n_mc=300,
-        sigma_aod=0.01,
-        sigma_H=100.0,
-        sigma_AA=0.15,
-        sigma_theta_c_deg=0.02,
-        sigma_rhoR=0.02,
-    )
-)
-
-print(unc["B_mu"])
-print(unc["B_gamma"])
-print(unc["ratio_gamma_to_muon"])
 '''

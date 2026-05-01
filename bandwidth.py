@@ -4,7 +4,7 @@ from math import sin, cos, sqrt, pi
 
 # own modules
 from bandwidth_helper_v import BandwidthHelper
-from muonlight_averager_v import MuonModel
+from muonlight_averager_v import MuonModel, UncertaintyConfig
 import telescope as tel
 import atmosphere_helper_v as ah
 import setup
@@ -14,60 +14,87 @@ matplotlib.use("TkAgg")   # or "QtAgg"
 
 plot_contributions = True
 plot_xidet         = True
-plot_ratio         = True
-plot_pmt           = True
-# style stuff
-fig_size = plt.rcParams['figure.figsize']
-lab_size = plt.rcParams['axes.labelsize']
-leg_size = plt.rcParams['legend.fontsize']
-fig_size[0] = fig_size[0]*1.65
-#plt.rcParams['figure.figsize'] = fig_size
-plt.rcParams['legend.fontsize'] = leg_size+1
-
+plot_zenith        = True
 
 # general configuration
-theta_tel = 0.    # telescope pointing angle, in degrees
-theta_c   = 1.23  # Cherenkov angle, in degrees
-rhoR_min  = 0.1   # reference lower impact distance cut
-scale_h   = 9700  # La Palma Winter molecular density scale height
+theta_tel = 0.    # default telescope pointing angle, in degrees
+theta_c   = 1.1   # average muon Cherenkov angle used in analysis, in degrees
+rhoR_min  = 0.1   # reference lower impact distance cut, in rhoR/R1
+scale_h   = 9500  # La Palma Winter reference molecular density scale height
+tel_height = 2200 # default telescope height asl in meters, SHOULD BE ADJUSTED FOR EACH TELESCOPE INDIVIDUALLY
 
-bh = BandwidthHelper()        
+bh = BandwidthHelper() # TO MODIFY THE BANDWIDTH MEASUREMENTS of the optical elements, EDIT THE FILE bandwidth_helper_v.py
 
-model = MuonModel.from_LSTN(bandwidth=bh, theta_tel_deg=theta_tel, theta_c_deg=theta_c, rhoR_min=rhoR_min, scale_h=scale_h)
+# DEFAULT MUON MODEL IS A CLEAR NIGHT. TO SIMULATE ANYTHING, USE THE DEFAULT CONSTRUCTOR MuonModel() with the corresponding arguments, see muonlight_average_v.py
+model = MuonModel.from_LSTN(bandwidth=bh, tel_height=tel_height, theta_tel_deg=theta_tel, theta_c_deg=theta_c, rhoR_min=rhoR_min, scale_h=scale_h)
 model.print_summary()
 
-print("B_mu    =", model.bandwidth_muon())
+print("B_mu =", model.bandwidth_muon())
 print("B_gamma =", model.bandwidth_gamma())
 print("ratio   =", model.ratio_gamma_to_muon())
 
-fig, ax = plt.subplots(constrained_layout=True)
-model.plot_contributions(filename="output/Bandwidth_LSTN.pdf", ax=ax)
-plt.show()
+unc = model.simulate_uncertainty(
+    UncertaintyConfig(
+        n_mc=50,   # use defaults for the rest
+    )
+)
+print(unc["B_mu"])
+print(unc["B_gamma"])
+print(unc["ratio_gamma_to_muon"])
 
-# standard LST/MST/SST comparison set
-models = MuonModel.build_standard_models()
-
-fig, ax = plt.subplots(constrained_layout=True)
-MuonModel.plot_xidet_comparison(
-    models=models,
-    filename="output/Bandwidth2.pdf", ax=ax
+fig, ax = plt.subplots(3,2,constrained_layout=True,figsize=(10,10))
+MuonModel.plot_bandwidth_vs_zenith(
+    filename="output/B_vs_zenith.pdf", ax=ax, uncertainties=True, n_mc=20
 )
 plt.show()
 
-fig, ax = plt.subplots(constrained_layout=True)
-MuonModel.plot_ratio_comparison(
-    models=models,
-    filename="output/Bandwidth_Ratio.pdf", ax=ax
+fig, ax = plt.subplots(3,1,constrained_layout=True,figsize=(20,15))
+MuonModel.plot_transmission_vs_zenith(
+    filename="output/T_vs_zenith.pdf", ax=ax
 )
 plt.show()
 
-fig, ax = plt.subplots(2,1,constrained_layout=True)
-MuonModel.plot_pde_and_transparency(
-    models=models,
-    filename="output/Bandwidth_PMT.pdf", ax=ax
-)
-plt.show()
 
+# 
+
+if plot_contributions: 
+
+    fig, ax = plt.subplots(constrained_layout=True)
+    model.plot_contributions(filename="output/Bandwidth_LSTN.pdf", ax=ax)
+    plt.show()
+
+
+if plot_xidet: 
+
+    # standard LST/MST/SST comparison set
+    models = MuonModel.build_standard_models()
+
+    #Should reproduce Figure 19 of https://iopscience.iop.org/article/10.3847/1538-4365/ab2123
+    # with < 0.5% differences for values involving t_mu due to updated atmospheric aerosol model
+    # Larger differences are found for t_gamma because of a better estimate of the median observed
+    # gamma-ray emission height Hgamma 
+    fig, ax = plt.subplots(constrained_layout=True)
+    MuonModel.plot_xidet_comparison(
+        models=models,
+        filename="output/Bandwidth2.pdf", ax=ax
+    )
+    plt.show()
+    
+    fig, ax = plt.subplots(constrained_layout=True)
+    MuonModel.plot_ratio_comparison(
+        models=models,
+        filename="output/Bandwidth_Ratio.pdf", ax=ax
+    )
+    plt.show()
+    
+    fig, ax = plt.subplots(2,1,Constrained_layout=True)
+    MuonModel.plot_pde_and_transparency(
+        models=models,
+        filename="output/Bandwidth_PMT.pdf", ax=ax
+    )
+    plt.show()
+
+    
 r'''
 if (plot_contributions):
 

@@ -246,7 +246,7 @@ class BandwidthHelper:
             return np.clip(self.qe_sigma_int(energy_ev), 0.0, None)
 
         if element.upper() == "SIPM":
-            return np.zeros_like(energy_ev)
+           return np.ones_like(energy_ev) * 0.01   # current guess TO BE FIXED!!!!
 
         raise ValueError(f"Unknown element: {element}")
 

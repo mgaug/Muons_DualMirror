@@ -679,8 +679,8 @@ class AtmosphereHelper:
         return Lmax, Lmin
 
     def av_transmission_rho_mol(self, e, thetac, costheta, scale_h=9700.,
-                                rho_min=0., rho_max=1., 
-                                n_rho=128, n_phi=512, n_path=32, debug=False):
+                                rhoR_min=0., rhoR_max=1., 
+                                n_rho=32, n_phi=256, n_path=32, debug=False):
         """
         weighted av_transmission_phi_mol over rhoR values starting from
         rho_min to rho_max and using the av_transmission_phi_mol
@@ -697,10 +697,10 @@ class AtmosphereHelper:
         """
         e = np.atleast_1d(np.asarray(e, dtype=float))
 
-        if rho_min < 0 or rho_max < 0 or rho_max < rho_min:
-            raise ValueError("rho_min, rho_max must be larger than zero and rho_max>rho_min, instead got: ",rho_min, rho_max)                        
+        if rhoR_min < 0 or rhoR_max < 0 or rhoR_max < rhoR_min:
+            raise ValueError("rhoR_min, rhoR_max must be larger than zero and rhoR_max>rhoR_min, instead got: ",rhoR_min, rhoR_max)                        
         
-        rhoR = np.linspace(rho_min, rho_max, n_rho)
+        rhoR = np.linspace(rhoR_min, rhoR_max, n_rho)
         T = self.av_transmission_phi_mol(e, thetac, rhoR, costheta, scale_h=scale_h,
                                          n_phi=n_phi, n_path=n_path, debug=debug)
         if debug:
@@ -708,12 +708,12 @@ class AtmosphereHelper:
 
         # weight each transmission with rhoR to account for high probability of
         # occurrence when rhoR lies further outwards
-        norm = 0.5 * (rho_max**2 - rho_min**2)
+        norm = 0.5 * (rhoR_max**2 - rhoR_min**2)
         out = trapezoid(T * rhoR, x=rhoR, axis=-1) / norm
         return out
 
     def av_transmission_phi_mol(self, e, thetac, rhoR, costheta, scale_h=9700.,
-                                n_phi=512, n_path=32, debug=False):
+                                n_phi=256, n_path=32, debug=False):
         """
         weighted av_transmission_mol over circle from 0 to 2pi, 
         using the rmax_for_phi to obtain a phi-dependent rmax value 
@@ -757,9 +757,9 @@ class AtmosphereHelper:
         return out
 
     def av_transmission_rho_aer(self, e, thetac, costheta,vaod, AE,
-                                rho_min=0., rho_max=1.,
+                                rhoR_min=0., rhoR_max=1.,
                                 Haer=None, HPBL=None, HElterman=None,
-                                n_rho=128, n_phi=512, n_path=32, debug=False):
+                                n_rho=32, n_phi=256, n_path=32, debug=False):
         """
         weighted av_transmission_aer over rhoR values starting from
         rho_min to rho_max and using the av_transmission_phi_aer
@@ -782,10 +782,10 @@ class AtmosphereHelper:
         """
         e = np.atleast_1d(np.asarray(e, dtype=float))
 
-        if rho_min < 0 or rho_max < 0 or rho_max < rho_min:
-            raise ValueError("rho_min, rho_max must be larger than zero and rho_max>rho_min, instead got: ",rho_min, rho_max)                        
+        if rhoR_min < 0 or rhoR_max < 0 or rhoR_max < rhoR_min:
+            raise ValueError("rhoR_min, rhoR_max must be larger than zero and rhoR_max>rhoR_min, instead got: ",rhoR_min, rhoR_max)                        
         
-        rhoR = np.linspace(rho_min, rho_max, n_rho)
+        rhoR = np.linspace(rhoR_min, rhoR_max, n_rho)
         T = self.av_transmission_phi_aer(e, thetac, rhoR, costheta,
                                          vaod, AE, Haer=Haer, HPBL=HPBL, HElterman=HElterman,
                                          n_phi=n_phi, n_path=n_path, debug=debug)
@@ -794,13 +794,13 @@ class AtmosphereHelper:
 
         # weight each transmission with rhoR to account for high probability of
         # occurrence when rhoR lies further outwards
-        norm = 0.5 * (rho_max**2 - rho_min**2)
+        norm = 0.5 * (rhoR_max**2 - rhoR_min**2)
         out = trapezoid(T * rhoR, x=rhoR, axis=-1) / norm
         return out
 
     def av_transmission_phi_aer(self, e, thetac, rhoR, costheta,
                                 vaod, AE, Haer=None, HPBL=None, HElterman=None,
-                                n_phi=512, n_path=32, debug=False):
+                                n_phi=256, n_path=32, debug=False):
         """
         weighted av_transmission_aer over circle from 0 to 2pi, 
         using the rmax_from_phi to obtain a phi-dependent rmax value 
@@ -888,7 +888,6 @@ class AtmosphereHelper:
         HElterman_corr=1200
     ):
         """
-        Vectorized version of get_trans_from_trans_file(Hgamma).
         If Hgamma is None, uses self.Hgamma
 
         Unfortunately, the default Corsika transmission table used 
@@ -1173,7 +1172,7 @@ class AtmosphereHelper:
         rhoR,
         costheta,
         scale_h=9700.,
-        n_phi=512,
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,
@@ -1213,8 +1212,8 @@ class AtmosphereHelper:
         rhoR_min,
         rhoR_max,
         scale_h=9700.,
-        n_rho=128,
-        n_phi=512,
+        n_rho=32,
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,
@@ -1259,7 +1258,7 @@ class AtmosphereHelper:
         Haer=None,
         HPBL=None,
         HElterman=None,
-        n_phi=512,
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,
@@ -1304,10 +1303,11 @@ class AtmosphereHelper:
         vaod,
         AE,
         Haer=None,
+        gamma=None,
         HPBL=None,
         HElterman=None,
-        n_rho=128,            
-        n_phi=512,
+        n_rho=32,            
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,
@@ -1320,7 +1320,7 @@ class AtmosphereHelper:
         y = self.av_transmission_rho_aer(
             energies_ev, thetac, costheta,vaod, AE,
             rho_min=rhoR_min, rho_max=rhoR_max, 
-            Haer=Haer, HPBL=HPBL, HElterman=HElterman,
+            Haer=Haer, gamma=gamma,HPBL=HPBL, HElterman=HElterman,
             n_rho=n_rho,n_phi=n_phi, n_path=n_path, debug=debug
         )
 
@@ -1435,7 +1435,7 @@ class AtmosphereHelper:
         rhoR_values,
         costheta,
         scale_h=9700.,
-        n_phi=512,
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,
@@ -1491,7 +1491,7 @@ class AtmosphereHelper:
         Haer=None,
         HPBL=None,
         HElterman=None,
-        n_phi=512,
+        n_phi=256,
         n_path=32,
         filename=None,
         show=True,

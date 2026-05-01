@@ -1,64 +1,47 @@
-import matplotlib as mpl
+import matplotlib
+import matplotlib
+from numpy import sqrt
 
-def SetUp():
-    mpl.rcParams.update({
-        
-        # --- Figure ---
-        "figure.figsize": (7.5, 6.0),   # inches
-        "figure.dpi": 100,
-        "savefig.dpi": 300,    
-        "savefig.bbox": "tight",
-        "savefig.pad_inches": 0.02,
-        
-        # --- Fonts ---
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "font.size": 16,
-        "axes.titlesize": 16,
-        "axes.labelsize": 16,
-        "xtick.labelsize": 16,
-        "ytick.labelsize": 16,
-        "legend.fontsize": 16,
-        "mathtext.fontset": "stix",
-        
-        # --- Axes ---
-        "axes.linewidth": 1.2,
-        "axes.grid": False,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        
-        # --- Ticks ---
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "xtick.major.size": 6,
-        "ytick.major.size": 6,
-        "xtick.minor.size": 3,
-        "ytick.minor.size": 3,
-        "xtick.major.width": 1.1,
-        "ytick.major.width": 1.1,
-        "xtick.minor.width": 0.8,
-        "ytick.minor.width": 0.8,
-        "xtick.minor.visible": True,
-        "ytick.minor.visible": True,
-        
-        # --- Lines ---
-        "lines.linewidth": 3,
-        "lines.markersize": 6,
-        
-        # --- Legend ---
-        "legend.frameon": False,
-        "legend.loc": "best",
-        "legend.handlelength": 2.5,
-        
-        # --- Errorbars ---
-        "errorbar.capsize": 3,
-        
-        "axes.titley": 1.07,
-        
-        # --- LaTeX (optional) ---
-        # "text.usetex": True,
-        # "text.latex.preamble": r"\usepackage{amsmath}",
+twocolumn = False
+#print "HELLO\n"
+if twocolumn == True:
+    fig_width_pt = 255.76535
+    fontsize     = 15
+else:
+    fig_width_pt = 426.79134
+    fontsize     = 10
 
-    })
+#fontsize = 20
 
+inches_per_pt = 1.0/72.27               # Convert pt to inch
+golden_mean = (sqrt(5.)+1.0)/2.0        # Aesthetic ratio
+fig_width = fig_width_pt*inches_per_pt  # width in inches
+fig_height = fig_width/golden_mean      # height in inches
+fig_size =  [fig_width*1.35,fig_height*1.35] # make figures a bit larger than default
+
+    
+params = {'backend': 'pdf',
+          'axes.labelsize': fontsize+2,
+          'font.size': fontsize,
+          'legend.fontsize': fontsize+1,
+          'xtick.labelsize': fontsize,
+          'ytick.labelsize': fontsize,
+          'axes.linewidth': 0.5,
+          'lines.linewidth': 0.7,
+          'text.usetex': False,
+          'ps.usedistiller': False,
+          'figure.figsize': fig_size,
+          'font.family': 'Arial',
+#          'axes.labelpad' : 2, 
+          'font.serif': ['Bitstream Vera Serif'],
+#          'image.cmap'  : 'Parula'
+  }
+matplotlib.rcParams.update(params)
+
+#matplotlib.style.use('v2.0')
+
+# colors suitable for deuteranopia
+CB_colors = ['#377eb8', '#ff7f00', '#4daf4a',
+             '#f781bf', '#a65628', '#984ea3',
+             '#999999', '#e41a1c', '#dede00']
 
