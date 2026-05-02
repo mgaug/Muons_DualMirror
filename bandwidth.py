@@ -42,9 +42,11 @@ print(unc["B_mu"])
 print(unc["B_gamma"])
 print(unc["ratio_gamma_to_muon"])
 
+# BEWARE THIS PART IS VERY SLOW IF n_mc=100 IS CHOSEN. IF YOU WANT TO SPEED UP,
+# PLEASE REDUCE THIS NUMBER (AT THE PRICE OF LOWER PRECISION OF THE UNCERTAINTIES)
 fig, ax = plt.subplots(3,2,constrained_layout=True,figsize=(10,10))
 MuonModel.plot_bandwidth_vs_zenith(
-    filename="output/B_vs_zenith.pdf", ax=ax, uncertainties=True, n_mc=20
+    filename="output/B_vs_zenith.pdf", ax=ax, uncertainties=True, n_mc=100
 )
 plt.show()
 
@@ -87,7 +89,7 @@ if plot_xidet:
     )
     plt.show()
     
-    fig, ax = plt.subplots(2,1,Constrained_layout=True)
+    fig, ax = plt.subplots(2,1,constrained_layout=True)
     MuonModel.plot_pde_and_transparency(
         models=models,
         filename="output/Bandwidth_PMT.pdf", ax=ax
