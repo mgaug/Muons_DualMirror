@@ -52,7 +52,8 @@ print(unc["ratio_gamma_to_muon"])
 # PLEASE SET THIS FLAG TO FALSE (AT THE PRICE OF LOWER ACCURACY OF THE RESULTS)
 fig, ax = plt.subplots(3,2,constrained_layout=True,figsize=(10,10))
 MuonModel.plot_bandwidth_vs_zenith(
-    filename="output/B_vs_zenith.pdf", ax=ax, uncertainties=True, full_accuracy=full_accuracy, verbose=True, 
+    filename="output/B_vs_zenith{s}.pdf".format(s="_full_accuracy" if full_accuracy is True else "_reduced_accuracy"),
+    ax=ax, uncertainties=True, full_accuracy=full_accuracy, verbose=True, 
 )
 plt.show()
 
