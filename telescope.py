@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 class Telescope:
     def __init__(self, name,
@@ -130,9 +131,11 @@ def LST():
         R1 = R1,
         Rhole = math.sqrt(2*math.sqrt(3.)*(Dfacet/2)**2/math.pi)  ,   # average radius of hexagon from flat-to-flat distance, such that r^2*pi = A_hexagon, see 10.1063/1.4969022
         FOV = 4.5,    # see 10.1063/1.4969022
-        F = 1.2*R1*2. # see f/D from 10.1063/1.4969022
+        F = 1.2*R1*2, # see f/D from 10.1063/1.4969022
         Omega_pix=0.1,# Field-of-view of pixel, in deg
         Npix=1855,    # Number of pixels        
+        Dpcam = 28.0,
+        Acam = 3.0/2
         )
 
 def MST():
