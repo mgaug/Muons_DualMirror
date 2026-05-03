@@ -8,24 +8,6 @@ from dataclasses import dataclass
 from rayleigh import Rayleigh
 from mumodel_helper_v import ev2nm, nm2ev, D
 
-''' obsolete code 
-@dataclass
-class UncertaintyConfig:
-    # atmosphere / geometry nuisance parameters
-    sigma_vaod: float = 0.01
-    sigma_Haer: float = 100.0          # m
-    sigma_gamma: float = 100.0          # m    
-    sigma_AE: float = 0.15
-    sigma_theta_c_deg: float = 0.02
-    sigma_rhoR_min: float = 0.02
-    sigma_HPBL: float = 100  # m
-    sigma_HElterman: float = 200 # m
-    
-    # MC control
-    n_mc: int = 200
-    random_seed: int | None = 12345        
-'''
-
 
 class AtmosphereHelper:
     """
@@ -877,10 +859,7 @@ class AtmosphereHelper:
     def get_trans_from_trans_file(
         self,
         Hgamma=None,
-        need_corr=True,
-        vaod_wrong=0.1,
-        Haer_wrong=1300,
-        AE_wrong=2.5,
+        atm_cfg=None,
         vaod_corr=0.03,
         Haer_corr=500,            
         HPBL_corr=800,
@@ -892,12 +871,18 @@ class AtmosphereHelper:
 
         Unfortunately, the default Corsika transmission table used 
         so far for simulations, data/atm_trans_2147_1_10_0_0_2147.dat, 
-        assumes a grossly overestimated aerosol extinction, which 
+        assumes a grotescly overestimated aerosol extinction, which 
         needs to be corrected. 
         """
         if Hgamma is None:
             Hgamma = self.Hgamma
 
+        if atm_cfg is not None:
+            need_corr = True
+            vaod_wrong = atm_cfg.vaod_wrong
+            AE_wrong = atm_cfg.AE_wrong
+            Haer_wrong = atm_cfg.Haer_wrong
+        
         es_corr = nm2ev(np.asarray(self.atm_tab["wl"], dtype=float))
 
         col = f"{int((Hgamma + self.obs_h) / 1000.0)}.000"

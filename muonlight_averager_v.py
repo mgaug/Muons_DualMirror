@@ -18,7 +18,8 @@ class UncertaintyConfig:
     sigma_theta_c_deg: float = 0.15 # Useful Cherenkov angles range from 0.8 to 1.3 deg.
     sigma_rhoR_min: float = 0.05    # Uncertainty of rhoR reconstruction
     sigma_HPBL: float = 100.0       # best guess, see Figure 15 of  https://academic.oup.com/mnras/article/515/3/4520/6608884
-    sigma_HElterman: float = 100.0  # best guess 
+    sigma_HElterman: float = 100.0  # best guess
+    sigma_Hgamma: float = 500.      # best guess
 
     rel_mirror_unc: float = 0.01    # best guess 
     rel_window_unc: float = 0.01    # best guess 
@@ -37,6 +38,7 @@ class UncertaintyConfig:
             "Aerosol density scale height above PBL (m)": self.sigma_Haer,
             "Exponent of cos(theta) dependency of Haer": self.sigma_gamma,
             "Angstrom Exponent": self.sigma_AE,
+            "Average observed gamma-shower Cherenkov light altitude": self.sigma_Hgamma,
             "Relative mirror reflectance": self.rel_mirror_unc,
             "Relative window transparency": self.rel_window_unc,
             "Number of simulations": self.n_mc,
@@ -45,6 +47,34 @@ class UncertaintyConfig:
     def print_summary(self):
         s = self.summary()
         print("Uncertainties summary")
+        print("-" * 70)
+        for k, v in s.items():
+            print(f"{k:60s}: {v}")
+        print('\n')
+
+    
+@dataclass
+class AtmFileConfig:
+
+    # supposed configuration of the atmosphere / geometry nuisance parameters
+
+    need_corr: bool =True   #  the file reflects wrong assumption on the atmosphere at the site and needs to be corrected
+
+    vaod_wrong: float = 0.1   # wrong MODTRAN desert atmosphere with largely exaggerated AOD 
+    Haer_wrong: float = 1300  # assumed aerosol scale height, we are not sure about the assumed PBL height, but as long as Haer_wrong is considerably smaller than Hgamma, this should not have a big impact.
+    AE_wrong: float = 2.5     # assumed on Angstrom exponent in atm_file
+
+    def summary(self):
+        return {
+            "Does the transmission table need an aerosol correction": self.need_corr,
+            "Assumed VAOD in the production of the transmission table": self.vaod_wrong,
+            "Assumed Haer for the undoing of the aerosol part in transmission table": self.Haer_wrong,
+            "Assumed Angstrom Exponent of the aerosol part in transmission table": self.AE_wrong,
+        }
+    
+    def print_summary(self):
+        s = self.summary()
+        print("Atmospheric Table summary")
         print("-" * 70)
         for k, v in s.items():
             print(f"{k:60s}: {v}")
@@ -72,6 +102,7 @@ class MuonModel:
         Hgamma: float | None = None,  # Average gamma-ray emission height 
         scale_h: float = 9500.0,      # Average molecular density scale height
         atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat",  # default atmospheric extinction file 
+        atm_cfg: AtmFileConfig | None = None, # used aerosol configurations for the atmospheric extinction file
         theta_tel_deg: float = 0.0,   # Telescope observing zenith angle 
         theta_c_deg: float = 1.1,     # muon Cherenkov angle in deg.
         rhoR_min: float = 0.1,        # lower muon impact distance cut (in relative rhoR = rho/R1)
@@ -80,7 +111,7 @@ class MuonModel:
         gamma: float = 0.77,          # default cos(zenith) exponent of Haer scaling 
         AE: float = 1.45,             # default Angstrom exponent of ground-layer aerosols
         HPBL: float = 800.0,          # default boundary layer height at zenith
-        HElterman: float = 1200.0,    # default aerosol scale height below HBPL 
+        HElterman: float = 1200.0,    # default aerosol scale height below HPBL 
     ):
         # telescope
         if telescope_obj is not None:
@@ -103,6 +134,11 @@ class MuonModel:
                 R1=tel.R1, Robst=tel.Rhole
             )
             
+        if atm_cfg is not None:
+            self.atm_cfg = atm_cfg
+        else:
+            self.atm_cfg = AtmFileConfig()
+
         self.bh = bandwidth if bandwidth is not None else BandwidthHelper()
             
         # observing / model parameters
@@ -129,7 +165,7 @@ class MuonModel:
     @classmethod
     def from_LSTN(cls, bandwidth: BandwidthHelper | None = None,
                   theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200.,
-                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
+                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.LST()
         atm = AtmosphereHelper.from_lst()
@@ -143,6 +179,7 @@ class MuonModel:
         # of https://academic.oup.com/mnras/article/515/3/4520/6608884, Section 6 
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, tel_height=tel_height,
+                   atm_file=atm_file, atm_cfg=atm_cfg,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77, HPBL=800. * costheta ** 0.6,HElterman=1200,
                    )
@@ -150,7 +187,7 @@ class MuonModel:
     @classmethod
     def from_MSTN(cls, bandwidth: BandwidthHelper | None = None,
                   theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
-                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
+                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.MST()
         atm = AtmosphereHelper.from_mst()
@@ -163,7 +200,8 @@ class MuonModel:
         # La-Palma like aerosol layer following the clear-night aerosol model 
         # of https://academic.oup.com/mnras/article/515/3/4520/6608884, Section 6 
         
-        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
+        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
+                   atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77,HPBL=800. * costheta ** 0.6,HElterman=1200,
                    )
@@ -171,7 +209,7 @@ class MuonModel:
     @classmethod
     def from_LSTS(cls, bandwidth: BandwidthHelper | None = None,
                   theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
-                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
+                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.LST()
         atm = AtmosphereHelper.from_lst()
@@ -181,6 +219,7 @@ class MuonModel:
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
+                   atm_file=atm_file, atm_cfg=atm_cfg,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500., HPBL=100.,HElterman=9000,
                    )
@@ -188,7 +227,7 @@ class MuonModel:
     @classmethod
     def from_MSTS(cls, bandwidth: BandwidthHelper | None = None,
                   theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
-                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
+                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.MST()
         atm = AtmosphereHelper.from_mst()
@@ -198,6 +237,7 @@ class MuonModel:
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
 
         return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
+                   atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500_0., gamma=0.,HPBL=100.,HElterman=9000,
                    )
@@ -205,7 +245,7 @@ class MuonModel:
     @classmethod
     def from_SSTS(cls, bandwidth: BandwidthHelper | None = None,
                   theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
-                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat"):
+                  atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.SST()
         atm = AtmosphereHelper.from_sst()
@@ -214,7 +254,8 @@ class MuonModel:
         # extremely shallow nocturnal turbulent surface layer PBL at Paranal, see
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
 
-        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh, 
+        return cls(telescope_obj=tel_object, atmosphere=atm, bandwidth=bh,
+                   atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500., gamma=0.,HPBL=100.,HElterman=9000,
                    )
@@ -291,12 +332,29 @@ class MuonModel:
         self.energy_step = float(self.bh.xi_steps)
         self.det_eff_nominal = self.detector_efficiency()
 
-    def _setup_gamma_transmission(self):
+    def _setup_gamma_transmission(self, Hgamma=None, atm_cfg=None,
+                                  vaod_corr=None, Haer_corr=None, HPBL_corr=None, AE_corr=None, HElterman_corr=None):
         """
         Interpolate corrected gamma transmission from atmosphere table
         onto the detector wavelength grid.
         """
-        trans = self.atm.get_trans_from_trans_file()
+
+        if atm_cfg is None:
+            atm_cfg = self.atm_cfg
+        if vaod_corr is None:
+            vaod_corr = self.vaod
+        if Haer_corr is None:
+            Haer_corr = self.Haer
+        if HPBL_corr is None:
+            HPBL_corr = self.HPBL
+        if AE_corr is None:
+            AE_corr = self.AE
+        if HElterman_corr is None:
+            HElterman_corr = self.HElterman            
+        
+        trans = self.atm.get_trans_from_trans_file(Hgamma=Hgamma, atm_cfg=atm_cfg,
+                                                   vaod_corr=vaod_corr, Haer_corr=Haer_corr,
+                                                   HPBL_corr=HPBL_corr, AE_corr=AE_corr, HElterman_corr=HElterman_corr)
         wl_tab = np.asarray(self.atm.atm_tab["wl"], dtype=float)
 
         self.gamma_trans_wl_interp = interp1d(
@@ -387,11 +445,17 @@ class MuonModel:
             **kwargs,
         )
 
-    def muon_transmission(self, debug=False, **kwargs):
-        tmol = self.muon_transmission_mol(debug=debug,**kwargs)
+    def muon_transmission(self, debug=False, full_accuracy=False, **kwargs):
+
+        # integration steps for full_accuracy
+        n_rho = 64 if full_accuracy else 16
+        n_phi = 512 if full_accuracy else 32
+        n_path = 128 if full_accuracy else 32
+        
+        tmol = self.muon_transmission_mol(debug=debug,n_rho=n_rho,n_phi=n_phi,n_path=n_path,**kwargs)
         if debug:
             print('tmol=',tmol)
-        taer = self.muon_transmission_aer(debug=debug,**kwargs)
+        taer = self.muon_transmission_aer(debug=debug,n_rho=n_rho,n_phi=n_phi,n_path=n_path,**kwargs)
         if debug:
             print('taer=',taer)
         return tmol * taer
@@ -399,14 +463,14 @@ class MuonModel:
     def gamma_response(self, **kwargs):
         return self.det_eff_nominal * self.gamma_transmission(**kwargs)
 
-    def muon_response(self, **kwargs):
-        return self.det_eff_nominal * self.muon_transmission(**kwargs)
+    def muon_response(self, full_accuracy=False, **kwargs):
+        return self.det_eff_nominal * self.muon_transmission(full_accuracy=full_accuracy,**kwargs)
 
     def bandwidth_gamma(self, **kwargs):
         return float(np.sum(self.gamma_response(**kwargs)) * self.energy_step)
 
-    def bandwidth_muon(self, **kwargs):
-        return float(np.sum(self.muon_response(**kwargs)) * self.energy_step)
+    def bandwidth_muon(self, full_accuracy=False,  **kwargs):
+        return float(np.sum(self.muon_response(full_accuracy=full_accuracy, **kwargs)) * self.energy_step)
 
     def ratio_gamma_to_muon(self, **kwargs):
         return self.bandwidth_gamma() / self.bandwidth_muon(**kwargs)
@@ -454,7 +518,7 @@ class MuonModel:
             print(f"{k:60s}: {v}")
         print('\n')            
 
-    def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc = None, **kwargs):
+    def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc = None, full_accuracy=False, **kwargs):
         if cfg is None:
             cfg = UncertaintyConfig()
 
@@ -470,13 +534,21 @@ class MuonModel:
         if costheta is None:
             costheta = self.costheta
 
+        # integration steps for full_accuracy
+        n_rho = 64 if full_accuracy else 16
+        n_phi = 512 if full_accuracy else 16
+        n_path = 128 if full_accuracy else 32
+        
         if verbose: 
             print ('Simulate uncertainties for: ')
             self.print_summary()
             cfg.print_summary()
             print ('Absolute uncertainties of QE for energies ',self.energy,' eV : ',self.qe_sigma)
             print ('costheta: ', costheta)
-            print ('number simulations: ', n_mc,'\n')            
+            print ('number simulations: ', n_mc,'\n')
+            print ('integrations with n_rho: ', n_rho,'\n')
+            print ('integrations with n_phi: ', n_phi,'\n')
+            print ('integrations with n_path: ', n_path,'\n')            
         
         for i in range(n_mc):
             scale_h_i = max(100.0, rng.normal(self.scale_h, cfg.sigma_scale_h))            
@@ -489,6 +561,7 @@ class MuonModel:
             rhoR_min_i = max(0.0, rng.normal(self.rhoR_min, cfg.sigma_rhoR_min))
             HPBL_i = max(30.0, rng.normal(self.HPBL, cfg.sigma_HPBL))
             HElterman_i = max(100.0, rng.normal(self.HElterman, cfg.sigma_HElterman))
+            Hgamma_i = max(4000.0, rng.normal(self.atm.Hgamma, cfg.sigma_Hgamma))
 
             # QE uncertainties are absolute uncertainties 
             qe_i = self.qe_nominal + rng.normal(0.0, self.qe_sigma, size=self.qe_nominal.shape)
@@ -510,6 +583,7 @@ class MuonModel:
                     costheta=costheta,
                     rhoR_min=rhoR_min_i,
                     scale_h=scale_h_i,
+                    n_rho=n_rho,n_phi=n_phi,n_path=n_path,
                     **kwargs,
                 )
                 *
@@ -523,16 +597,22 @@ class MuonModel:
                     AE=AE_i,
                     HPBL=HPBL_i,
                     HElterman=HElterman_i,
+                    n_rho=n_rho,n_phi=n_phi,n_path=n_path,
                     **kwargs,
                 )
             )
 
-            ga_i = det_i * self.gamma_transmission()
+            self._setup_gamma_transmission(Hgamma=Hgamma_i,vaod_corr=vaod_i, Haer_corr=Haer_i, HPBL_corr=HPBL_i, AE_corr=AE_i, HElterman_corr=HElterman_i)
+            ga_i = det_i * self.gamma_transmission(costheta=costheta)
 
             bmu[i] = np.sum(mu_i) * self.energy_step
             bgam[i] = np.sum(ga_i) * self.energy_step
-            ratio[i] = bgam[i] / max(bmu[i], 1e-30)
+            ratio[i] = bgam[i] / max(bmu[i], 1e-2)
 
+        # restore the original gamma_transmission
+        self._setup_gamma_transmission()
+
+            
         def summary(x):
             return {
                 "mean": float(np.mean(x)),
@@ -667,7 +747,8 @@ class MuonModel:
         return self.bh.xi_det_sipm if with_camera else self.bh.xi_det_sipm_nocam
 
     def _gamma_interp_on_grid(self, wavelength_grid):
-        trans = self.atm.get_trans_from_trans_file()
+        trans = self.atm.get_trans_from_trans_file(atm_cfg=self.atm_cfg,
+                                                   vaod_corr=self.vaod, Haer_corr=self.Haer, HPBL_corr=self.HPBL, AE_corr=self.AE, HElterman_corr=self.HElterman)
         wl_tab = np.asarray(self.atm.atm_tab["wl"], dtype=float)
         interp = interp1d(wl_tab, trans, kind="linear", bounds_error=False,
                           fill_value=(trans[0], trans[-1]))
@@ -1016,7 +1097,7 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, n_mc=5, n_thetas=10):
+    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, full_accuracy=True, verbose=True, n_thetas=10):
 
         if models is None:
             models = cls.build_standard_models()
@@ -1029,45 +1110,44 @@ class MuonModel:
 
         print ("Standard models created: LSTN, LSTS, MSTN, MSTS, SSTS")
 
+        # evaluate on custom theta grid
         thetas = np.linspace(0., 75., n_thetas)
 
-        # evaluate on custom energy grid
-        
-        Blstn_mu = np.array([ float(lstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        Blstn_mu = np.array([ float(lstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.),full_accuracy=full_accuracy)) for theta in thetas ])
         print ("Created muon bandwidths for: LSTN")        
         Blstn_gamma = np.array([ float(lstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
         print ("Created gamma bandwidths for: LSTN")
-        Bmstn_mu = np.array([ float(mstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        Bmstn_mu = np.array([ float(mstn.bandwidth_muon(costheta=np.cos(theta*np.pi/180.),full_accuracy=full_accuracy)) for theta in thetas ])
         print ("Created muon bandwidths for: MSTN")                                             
         Bmstn_gamma = np.array([ float(mstn.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
         print ("Created gamma bandwidths for: MSTN")
-        Blsts_mu = np.array([ float(lsts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        Blsts_mu = np.array([ float(lsts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.),full_accuracy=full_accuracy)) for theta in thetas ])
         print ("Created muon bandwidths for: LSTS")                                             
         Blsts_gamma = np.array([ float(lsts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
         print ("Created gamma bandwidths for: LSTS")
-        Bmsts_mu = np.array([ float(msts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        Bmsts_mu = np.array([ float(msts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.),full_accuracy=full_accuracy)) for theta in thetas ])
         print ("Created muon bandwidths for: MSTS")                                             
         Bmsts_gamma = np.array([ float(msts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
         print ("Created gamma bandwidths for: MSTS")
-        Bssts_mu = np.array([ float(ssts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
+        Bssts_mu = np.array([ float(ssts.bandwidth_muon(costheta=np.cos(theta*np.pi/180.),full_accuracy=full_accuracy)) for theta in thetas ])
         print ("Created muon bandwidths for: SSTS")                                             
         Bssts_gamma = np.array([ float(ssts.bandwidth_gamma(costheta=np.cos(theta*np.pi/180.))) for theta in thetas ])
         print ("Created gamma bandwidths for: SSTS")                                             
 
         if uncertainties:
 
-            verbose = True 
+            n_mc = 200 if full_accuracy else 20
             
             print ('Start calculating uncertainties with n_mc=',n_mc)
-            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = zip(*[ lstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = zip(*[ lstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
             print ("Created uncertainties for: LSTN")                    
-            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = zip(*[ mstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = zip(*[ mstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
             print ("Created uncertainties for: MSTN")                                
-            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = zip(*[ lsts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = zip(*[ lsts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
             print ("Created uncertainties for: LSTS")                                
-            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = zip(*[ msts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = zip(*[ msts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
             print ("Created uncertainties for: MSTS")                                
-            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = zip(*[ ssts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc) for theta in thetas ])
+            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = zip(*[ ssts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
             print ("Created uncertainties for: SSTS")
 
         else:
@@ -1130,326 +1210,3 @@ class MuonModel:
         return ax
 
 
-''' old code 
-import numpy as np
-from dataclasses import dataclass
-from math import cos, pi
-from scipy.integrate import trapezoid
-from scipy.interpolate import interp1d
-
-import bandwidth_helper as bh
-from atmosphere_helper_v import AtmosphereHelper as ah
-from telescope import Telescope as tel
-from rayleigh import Rayleigh
-from mumodel_helper_v import ev2nm, nm2ev, D
-
-
-@dataclass
-class UncertaintyConfig:
-    # detector
-    use_detector_qe_uncertainty: bool = True
-
-    # atmosphere / geometry nuisance parameters
-    sigma_aod: float = 0.01
-    sigma_H: float = 100.0          # m
-    sigma_AA: float = 0.15
-    sigma_theta_c_deg: float = 0.02
-    sigma_rhoR: float = 0.02
-
-    # optional relative uncertainties for optics curves lacking tabulated stdev
-    rel_mirror_unc: float = 0.01
-    rel_window_unc: float = 0.01
-
-    # MC control
-    n_mc: int = 200
-    random_seed: int | None = 12345
-
-
-class VectorizedCherenkovModel:
-    """
-    Vectorized Cherenkov bandwidth model with uncertainty propagation.
-
-    Main outputs:
-      - muon_response()
-      - gamma_response()
-      - bandwidth_muon()
-      - bandwidth_gamma()
-      - propagate_uncertainty()
-    """
-
-    def __init__(
-        self,
-        telescope: str = "LST",
-        aod: float = 0.03,
-        H: float = 600.0,
-        AA: float = 1.2,
-        theta_tel_deg: float = 0.0,
-        theta_c_deg: float = 1.23,
-        rhoR: float = 0.32,
-        n_path_grid: int = 400,
-        n_phi_grid: int = 512,
-    ):
-        self.telescope = telescope.upper()
-        self.aod = float(aod)
-        self.H = float(H)
-        self.AA = float(AA)
-        self.theta_tel_deg = float(theta_tel_deg)
-        self.theta_c_deg = float(theta_c_deg)
-        self.rhoR = float(rhoR)
-
-        self.costheta = cos(theta_tel_deg * pi / 180.0)
-        self.thetac = theta_c_deg * pi / 180.0
-
-        self.n_path_grid = int(n_path_grid)
-        self.n_phi_grid = int(n_phi_grid)
-
-        self._set_telescope()
-        self._set_detector_grid()
-        self._build_interpolators()
-        self._cache_rayleigh_alpha()
-        self._cache_gamma_transmission()
-
-    def _set_telescope(self) -> None:
-        if self.telescope == "LST":
-            self.R = R_LST
-            self.inner_R = inner_R_LST
-            self.Hgamma = Hgamma_LST
-            self.detector_type = "PMT"
-        elif self.telescope == "MST":
-            self.R = R_MST
-            self.inner_R = inner_R_MST
-            self.Hgamma = Hgamma_MST
-            self.detector_type = "PMT"
-        elif self.telescope == "SST":
-            self.R = R_SST
-            self.inner_R = inner_R_SST
-            self.Hgamma = Hgamma_SST
-            self.detector_type = "SIPM"
-        else:
-            raise ValueError(f"Unknown telescope: {self.telescope}")
-
-    def _set_detector_grid(self) -> None:
-        if self.detector_type == "PMT":
-            self.energy = np.asarray(bh.xi_e_pmt, dtype=float)
-            self.wavelength = np.asarray(bh.xi_wl_pmt, dtype=float)
-            self.det_eff_nominal = np.asarray(bh.xi_det_pmt, dtype=float)
-            self.qe_nominal = np.asarray(bh.qe_int(self.energy), dtype=float)
-            self.qe_sigma = np.asarray(bh.qe_dev, dtype=float)
-            # qe_dev is tabulated on bh.qe_e, so interpolate to model grid
-            self.qe_sigma = np.interp(self.energy, bh.qe_e, bh.qe_dev)
-            self.mirror_nominal = np.asarray(bh.mi_int(self.energy), dtype=float)
-            self.window_nominal = np.asarray(bh.ca_int(self.energy), dtype=float)
-        else:
-            self.energy = np.asarray(bh.xi_e_sipm, dtype=float)
-            self.wavelength = np.asarray(bh.xi_wl_sipm, dtype=float)
-            self.det_eff_nominal = np.asarray(bh.xi_det_sipm, dtype=float)
-            self.qe_nominal = np.asarray(bh.si_int(self.energy), dtype=float)
-            self.qe_sigma = None
-            self.mirror_nominal = np.asarray(bh.mi_int(self.energy), dtype=float)
-            self.window_nominal = np.asarray(bh.cs_int(self.energy), dtype=float)
-
-        self.energy_step = float(bh.xi_steps)
-
-    def _build_interpolators(self) -> None:
-        trans_wl = np.asarray(atm_tab["wl"], dtype=float)
-        trans_val = np.asarray(get_trans_from_trans_file(self.Hgamma), dtype=float)
-
-        self.gamma_trans_wl_interp = interp1d(
-            trans_wl,
-            trans_val,
-            kind="linear",
-            bounds_error=False,
-            fill_value=(trans_val[0], trans_val[-1]),
-        )
-
-    def _cache_gamma_transmission(self) -> None:
-       trans = get_trans_from_trans_file_vec(self.Hgamma)
-        wl = np.asarray(atm_tab["wl"], dtype=float)
-        self.gamma_transmission_nominal = np.interp(self.wavelength, wl, trans)
-
-    @staticmethod
-    def _safe_clip(x: np.ndarray, low: float = 0.0, high: float = 1.0) -> np.ndarray:
-        return np.clip(x, low, high)
-
-    def _rmax_phi(self, R: float, inner_R: float, thetac: float, rhoR: float) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Vectorized geometric upper path length in radial coordinate.
-        """
-        phi = np.linspace(0.0, pi / 2.0, self.n_phi_grid)
-        d1 = np.vectorize(D)(rhoR, phi)
-        d2 = np.vectorize(D)(rhoR * R / inner_R, phi)
-        rmax = R / np.tan(thetac) * d1 - inner_R / np.tan(thetac) * d2
-        rmax = np.maximum(rmax, 0.0)
-        return phi, rmax
-
-    def _transmission_mol_vectorized(self, rmax_phi: np.ndarray) -> np.ndarray:
-        """
-        Returns average molecular transmission over phi for each energy.
-        Shape returned: (n_energy,)
-        """
-        # path coordinate grid normalized per phi
-        u = np.linspace(0.0, 1.0, self.n_path_grid)[:, None]              # (n_path, 1)
-        rmax = rmax_phi[None, :]                                          # (1, n_phi)
-        x = u * rmax                                                      # (n_path, n_phi)
-
-        # average transmission from 0..rmax for every phi and energy
-        # T_mol(e, x) = exp[-alpha0/ct * integral exp(-s/scale_h) ds]
-        #               = exp[-alpha0/ct * scale_h * (1-exp(-x*ct/scale_h))]
-        tau = (self.alpha0_mol[:, None, None] / self.costheta) * scale_h * (
-            1.0 - np.exp(-x[None, :, :] * self.costheta / scale_h)
-        )                                                                 # (n_energy, n_path, n_phi)
-
-        T = np.exp(-tau)
-        av_over_r = trapezoid(T, x=x[None, :, :], axis=1) / np.maximum(rmax[None, :], 1e-12)
-        # phi average: factor in original helper is 2/pi * ∫_0^{pi/2} ...
-        phi = np.linspace(0.0, pi / 2.0, self.n_phi_grid)
-        return (2.0 / pi) * trapezoid(av_over_r, x=phi, axis=1)
-
-    def _transmission_aer_vectorized(self, rmax_phi: np.ndarray, aod: float, H: float, AA: float) -> np.ndarray:
-        """
-        Returns average aerosol transmission over phi for each energy.
-        Shape returned: (n_energy,)
-        """
-        u = np.linspace(0.0, 1.0, self.n_path_grid)[:, None]
-        rmax = rmax_phi[None, :]
-        x = u * rmax
-
-        if H > 0:
-            alpha0 = (aod / H) * np.power(self.energy / nm2ev(532.0), AA)
-            H_eff = H
-        else:
-            alpha0 = (aod / (-H)) * np.power(self.energy / nm2ev(532.0), AA)
-            H_eff = 1e10
-
-        tau = (alpha0[:, None, None] / self.costheta) * H_eff * (
-            1.0 - np.exp(-x[None, :, :] * self.costheta / H_eff)
-        )
-
-        T = np.exp(-tau)
-        av_over_r = trapezoid(T, x=x[None, :, :], axis=1) / np.maximum(rmax[None, :], 1e-12)
-        phi = np.linspace(0.0, pi / 2.0, self.n_phi_grid)
-        return (2.0 / pi) * trapezoid(av_over_r, x=phi, axis=1)
-
-        self.gamma_transmission_nominal = np.asarray(
-            self.gamma_trans_wl_interp(self.wavelength),
-            dtype=float,
-        )
-
-
-    def gamma_transmission(self) -> np.ndarray:
-        return self.gamma_transmission_nominal.copy()
-
-    def detector_efficiency(self, qe=None, mirror=None, window=None) -> np.ndarray:
-        qe = self.qe_nominal if qe is None else np.asarray(qe, dtype=float)
-        mirror = self.mirror_nominal if mirror is None else np.asarray(mirror, dtype=float)
-        window = self.window_nominal if window is None else np.asarray(window, dtype=float)
-        return self._safe_clip(qe * mirror * window)
-
-    def muon_response(self, **kwargs) -> np.ndarray:
-        return self.detector_efficiency() * self.muon_transmission(**kwargs)
-
-    def gamma_response(self) -> np.ndarray:
-        return self.detector_efficiency() * self.gamma_transmission()
-
-    def bandwidth_muon(self, **kwargs) -> float:
-        return float(np.sum(self.muon_response(**kwargs)) * self.energy_step)
-
-    def bandwidth_gamma(self) -> float:
-        return float(np.sum(self.gamma_response()) * self.energy_step)
-
-    def ratio_gamma_to_muon(self, **kwargs) -> float:
-        return self.bandwidth_gamma() / self.bandwidth_muon(**kwargs)
-
-    def cumulative_blindness_curve(self, blind_energy_ev: np.ndarray | None = None, **kwargs) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Equivalent in spirit to the blindness / cutoff scans in bandwidth.py.
-        Returns (energy_grid, fractional loss curve).
-        """
-        if blind_energy_ev is None:
-            blind_energy_ev = self.energy
-
-        blind_energy_ev = np.asarray(blind_energy_ev, dtype=float)
-        gamma_comb = self.gamma_response()
-        muon_comb = self.muon_response(**kwargs)
-
-        c_gamma = np.cumsum(gamma_comb) * self.energy_step
-        c_muon = np.cumsum(muon_comb) * self.energy_step
-        total_gamma = c_gamma[-1]
-        total_muon = c_muon[-1]
-
-        loss = (c_gamma - c_muon * total_gamma / total_muon) / np.maximum(c_gamma, 1e-30)
-        return self.energy.copy(), loss
-
-    def propagate_uncertainty(self, cfg: UncertaintyConfig | None = None) -> dict:
-        """
-        Monte Carlo propagation for:
-          - B_mu
-          - B_gamma
-          - B_gamma / B_mu
-        """
-        if cfg is None:
-            cfg = UncertaintyConfig()
-
-        rng = np.random.default_rng(cfg.random_seed)
-
-        bmu = np.empty(cfg.n_mc, dtype=float)
-        bgam = np.empty(cfg.n_mc, dtype=float)
-        ratio = np.empty(cfg.n_mc, dtype=float)
-
-        for i in range(cfg.n_mc):
-            # sample atmosphere / geometry nuisances
-            aod_i = max(1e-6, rng.normal(self.aod, cfg.sigma_aod))
-            H_i = max(1e-6, rng.normal(self.H, cfg.sigma_H))
-            AA_i = rng.normal(self.AA, cfg.sigma_AA)
-            theta_c_i = rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg)
-            rhoR_i = rng.normal(self.rhoR, cfg.sigma_rhoR)
-
-            # detector nuisance sampling
-            if cfg.use_detector_qe_uncertainty and self.qe_sigma is not None:
-                qe_i = self.qe_nominal + rng.normal(0.0, self.qe_sigma, size=self.qe_nominal.shape)
-            else:
-                qe_i = self.qe_nominal.copy()
-
-            mirror_i = self.mirror_nominal * (1.0 + rng.normal(0.0, cfg.rel_mirror_unc, size=self.mirror_nominal.shape))
-            window_i = self.window_nominal * (1.0 + rng.normal(0.0, cfg.rel_window_unc, size=self.window_nominal.shape))
-
-            det_i = self.detector_efficiency(qe=qe_i, mirror=mirror_i, window=window_i)
-            mu_i = det_i * self.muon_transmission(
-                aod=aod_i,
-                H=H_i,
-                AA=AA_i,
-                theta_c_deg=theta_c_i,
-                rhoR=rhoR_i,
-            )
-            ga_i = det_i * self.gamma_transmission()
-
-            bmu[i] = np.sum(mu_i) * self.energy_step
-            bgam[i] = np.sum(ga_i) * self.energy_step
-            ratio[i] = bgam[i] / max(bmu[i], 1e-30)
-
-        def summary(x: np.ndarray) -> dict:
-            return {
-                "mean": float(np.mean(x)),
-                "std": float(np.std(x, ddof=1)),
-                "median": float(np.median(x)),
-                "p16": float(np.percentile(x, 16)),
-                "p84": float(np.percentile(x, 84)),
-            }
-
-        return {
-            "B_mu": summary(bmu),
-            "B_gamma": summary(bgam),
-            "ratio_gamma_to_muon": summary(ratio),
-            "samples": {
-                "B_mu": bmu,
-                "B_gamma": bgam,
-                "ratio_gamma_to_muon": ratio,
-            },
-        }
-
-
-print("Muon bandwidth:", model.bandwidth_muon())
-print("Gamma bandwidth:", model.bandwidth_gamma())
-print("Ratio:", model.ratio_gamma_to_muon())
-
-'''
