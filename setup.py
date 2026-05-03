@@ -1,6 +1,6 @@
 import matplotlib
-import matplotlib
 from numpy import sqrt
+import os
 
 twocolumn = False
 #print "HELLO\n"
@@ -44,4 +44,9 @@ matplotlib.rcParams.update(params)
 CB_colors = ['#377eb8', '#ff7f00', '#4daf4a',
              '#f781bf', '#a65628', '#984ea3',
              '#999999', '#e41a1c', '#dede00']
+
+
+has_display = "DISPLAY" in os.environ
+if has_display:
+    matplotlib.use("TkAgg")   # force interactive if not batch mode
 

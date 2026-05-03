@@ -31,39 +31,78 @@ class BandwidthHelper:
 
     def __init__(self,
                  xi_steps: float = 0.05,
-                 qe_file: str = "data/qe_R12992-100-05.dat",   # QE of the R12992 PMT
-                 qe_file_mult = 1.,
-                 ete_file: str = "data/QE_ETE8dyn_ETE7dyn_Hamamatsu.dat", # QE of the ETE D569/3SA, the ETE D573KFLSA and the Hamamatsu R12992-100
-                 ete_file_mult = 0.01,                 
-                 si_file: str = "data/qe_S13360_75pe_Hamamatsu.dat", # QE of the SiPM S13360
-                 si_file_mult = 0.01,                 
-                 mi_file: str = "data/ref_AlSiO2HfO2.dat",  # Reflectivity of the mirrors used for Prod3
-                 mi_file_mult = 1.,                 
-                 ca_file: str = "data/Aclylite8_tra_v2013ref.dat",  # Camera protection window transparency
-                 ca_file_mult = 1.,                 
-                 cs_file: str = "data/ASTRI_fullslitheight_0deg.csv", # Transparency of the ASTRI camera protection window
-                 cs_file_mult = 0.01,
+                 qe_file: str    = "data/qe_R12992-100-05.dat",   # QE of the R12992 PMT
+                 qe_file_mult    = 1.,
+                 si_file: str    = "data/qe_S13360_75pe_Hamamatsu.dat", # QE of the SiPM S13360
+                 si_file_mult    = 0.01,                 
+                 mi_file: str    = "data/ref_AlSiO2HfO2.dat",  # Reflectivity of the mirrors used for Prod3
+                 mi_file_mult    = 1.,                 
+                 ca_file: str    = "data/Aclylite8_tra_v2013ref.dat",  # Camera protection window transparency
+                 ca_file_mult    = 1.,                 
+                 cs_file: str    = "data/ASTRI_fullslitheight_0deg.csv", # Transparency of the ASTRI camera protection window
+                 cs_file_mult    = 0.01,
+                 e_pmt_min       = 1.5596,
+                 e_pmt_max       = 4.8,
+                 e_sipm_min      = 1.3777,
+                 e_sipm_max      = 4.5,
+                 e_pmt_nocam_max = 5.5
     ):
         self.xi_steps = float(xi_steps)
 
         self._load_tables(
             qe_file, qe_file_mult,
-            ete_file, ete_file_mult,
             si_file, si_file_mult,
             mi_file, mi_file_mult,
             ca_file, ca_file_mult,
             cs_file, cs_file_mult,
         )        
         self._build_interpolators()
-        self._build_energy_grids()
+        self._build_energy_grids(e_pmt_min=e_pmt_min,e_pmt_max=e_pmt_max,
+                                 e_sipm_min=e_sipm_min,e_sipm_max=e_sipm_max,
+                                 e_pmt_nocam_max=e_pmt_nocam_max)
         self._build_element_products()
 
+        self.summary = {
+            "QE of PMTs from ": qe_file,
+            "QE of SiPMs from ": si_file,
+            "Mirror reflectivity from ": mi_file,
+            "Camera window transparency from ": ca_file,
+            "SST camera transparency from ": cs_file,
+            "QE PMTs multiplier ": qe_file_mult,
+            "QE SiPMs multiplier ": si_file_mult,
+            "Mirror refl. multiplier ": mi_file_mult,
+            "Camera window trans. multiplier ": ca_file_mult,
+            "SST camera trans. multiplier ": cs_file_mult,
+            "Interpolated energy grid steps (eV) ": xi_steps,
+            "Min. photon energy PMT (eV) ": e_pmt_min,
+            "Max. photon energy PMT (eV) ": e_pmt_max,
+            "Min. photon energy SiPM (eV) ": e_sipm_min,
+            "Max. photon energy SiPM (eV) ": e_sipm_max,
+            "Max. photon energy PMT w/o camera (eV) ": e_pmt_nocam_max,
+            "Min. photon wavelength PMT (nm) ": ev2nm(e_pmt_max),
+            "Max. photon wavelength PMT (nm) ": ev2nm(e_pmt_min),
+            "Min. photon wavelength SiPM (nm) ": ev2nm(e_sipm_max),
+            "Max. photon wavelength SiPM (nm) ": ev2nm(e_sipm_min),
+            "Min. photon wavelength PMT w/o camera (nm) " : ev2nm(e_pmt_nocam_max)
+        }
+
+        self.print_summary()
+
+
+    def print_summary(self):
+        s = self.summary
+        print("Bandwidth summary")
+        print("-" * 50)
+        for k, v in s.items():
+            print(f"{k:40s}: {v}")
+        print('\n')            
+
+        
     # ----------------------------
     # loading
     # ----------------------------
     def _load_tables(self,
                      qe_file, qe_file_mult,
-                     ete_file, ete_file_mult,
                      si_file,si_file_mult,
                      mi_file,mi_file_mult,
                      ca_file,ca_file_mult,
@@ -74,14 +113,6 @@ class BandwidthHelper:
             skip_blank_lines=True,
             comment="#",
             names=["Wavelength", "meanQE", "stdev", "minQE", "maxQE"],
-        )
-
-        ete_tab = pd.read_table(
-            ete_file,
-            sep=r"\s+",
-            skip_blank_lines=True,
-            comment="#",
-            names=["Wavelength", "meanQE", "meanQE8dyn", "meanQEHam"],
         )
 
         si_tab = pd.read_table(
@@ -121,12 +152,6 @@ class BandwidthHelper:
             energy_ev=nm2ev(qe_tab["Wavelength"].to_numpy(dtype=float)),
             values=np.asarray(qe_tab["meanQE"], dtype=float),
             sigma=np.asarray(qe_tab["stdev"], dtype=float) * qe_file_mult,
-        )
-
-        self.qe_ete = Measurements(
-            wavelength_nm=np.asarray(ete_tab["Wavelength"], dtype=float),
-            energy_ev=nm2ev(ete_tab["Wavelength"].to_numpy(dtype=float)),
-            values=np.asarray(ete_tab["meanQE"], dtype=float) * ete_file_mult,
         )
 
         self.qe_sipm = Measurements(
@@ -174,7 +199,6 @@ class BandwidthHelper:
         self.qe_int = self._make_interp(self.qe_pmt.energy_ev, self.qe_pmt.values)
         self.qe_sigma_int = self._make_interp(self.qe_pmt.energy_ev, self.qe_pmt.sigma)
 
-        self.ete_int = self._make_interp(self.qe_ete.energy_ev, self.qe_ete.values)
         self.si_int = self._make_interp(self.qe_sipm.energy_ev, self.qe_sipm.values)
         self.mi_int = self._make_interp(self.mirror.energy_ev, self.mirror.values)
         self.ca_int = self._make_interp(self.cam_pmt.energy_ev, self.cam_pmt.values)
@@ -183,12 +207,12 @@ class BandwidthHelper:
     # ----------------------------
     # element grids
     # ----------------------------
-    def _build_energy_grids(self):
-        self.xi_e_pmt = np.arange(1.5596, 4.8, self.xi_steps)
-        self.xi_e_pmt_nocam = np.arange(1.5596, 5.5, self.xi_steps)
+    def _build_energy_grids(self, e_pmt_min=1.5596, e_pmt_max=4.8, e_sipm_min=1.3777,e_sipm_max=4.5, e_pmt_nocam_max=5.5):
+        self.xi_e_pmt = np.arange(e_pmt_min, e_pmt_max, self.xi_steps)
+        self.xi_e_pmt_nocam = np.arange(e_pmt_min, e_pmt_nocam_max, self.xi_steps)
 
-        self.xi_e_sipm = np.arange(1.3777, 4.5, self.xi_steps)
-        self.xi_e_sipm_nocam = np.arange(1.3777, 4.5, self.xi_steps)
+        self.xi_e_sipm = np.arange(e_sipm_min, e_sipm_max, self.xi_steps)
+        self.xi_e_sipm_nocam = np.arange(e_sipm_min, e_sipm_max, self.xi_steps)
 
         self.xi_wl_pmt = ev2nm(self.xi_e_pmt)
         self.xi_wl_pmt_nocam = ev2nm(self.xi_e_pmt_nocam)

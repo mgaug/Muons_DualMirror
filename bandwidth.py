@@ -6,15 +6,9 @@ from math import sin, cos, sqrt, pi
 from bandwidth_helper_v import BandwidthHelper
 from muonlight_averager_v import MuonModel, UncertaintyConfig, AtmFileConfig
 import telescope as tel
-import atmosphere_helper_v as ah
-import setup
-import sys
-import os
 import matplotlib
-
-has_display = "DISPLAY" in os.environ
-if has_display:
-    matplotlib.use("TkAgg")   # force interactive if not batch mode
+import setup
+from setup import has_display
 
 # script configurations
 plot_contributions = True
@@ -23,7 +17,7 @@ plot_zenith        = True
 full_accuracy      = True
 
 # general configuration
-theta_tel = 0.    # default telescope pointing angle, in degrees
+theta_tel = 0.    # default telescope pointing zenith angle, in degrees
 theta_c   = 1.1   # average muon Cherenkov angle used in analysis, in degrees
 rhoR_min  = 0.1   # reference lower impact distance cut, in rhoR/R1
 scale_h   = 9500  # La Palma Winter reference molecular density scale height
