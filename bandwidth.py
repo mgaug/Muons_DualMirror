@@ -9,10 +9,11 @@ import telescope as tel
 import atmosphere_helper_v as ah
 import setup
 import sys
+import os
 import matplotlib
 
-is_interactive = sys.stdout.isatty()
-if is_interactive:
+has_display = "DISPLAY" in os.environ
+if has_display:
     matplotlib.use("TkAgg")   # force interactive if not batch mode
 
 # script configurations
@@ -63,14 +64,14 @@ plt.show()
 
 fig, ax = plt.subplots(3,1,constrained_layout=True,figsize=(20,15))
 MuonModel.plot_transmission_vs_zenith(
-    filename="output/T_vs_zenith.pdf", ax=ax, show=is_interactive
+    filename="output/T_vs_zenith.pdf", ax=ax, show=has_display
 )
 # 
 
 if plot_contributions: 
 
     fig, ax = plt.subplots(constrained_layout=True)
-    model.plot_contributions(filename="output/Bandwidth_LSTN.pdf", ax=ax,show=is_interactive)
+    model.plot_contributions(filename="output/Bandwidth_LSTN.pdf", ax=ax,show=has_display)
 
 
 if plot_xidet: 
@@ -85,18 +86,18 @@ if plot_xidet:
     fig, ax = plt.subplots(constrained_layout=True)
     MuonModel.plot_xidet_comparison(
         models=models,
-        filename="output/Bandwidth2.pdf", ax=ax,show=is_interactive
+        filename="output/Bandwidth2.pdf", ax=ax,show=has_display
     )
     
     fig, ax = plt.subplots(constrained_layout=True)
     MuonModel.plot_ratio_comparison(
         models=models,
-        filename="output/Bandwidth_Ratio.pdf", ax=ax,show=is_interactive
+        filename="output/Bandwidth_Ratio.pdf", ax=ax,show=has_display
     )
     
     fig, ax = plt.subplots(2,1,constrained_layout=True)
     MuonModel.plot_pde_and_transparency(
         models=models,
-        filename="output/Bandwidth_PMT.pdf", ax=ax,show=is_interactive
+        filename="output/Bandwidth_PMT.pdf", ax=ax,show=has_display
     )
 
