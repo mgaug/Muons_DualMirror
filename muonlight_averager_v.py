@@ -111,7 +111,8 @@ class MuonModel:
         gamma: float = 0.77,          # default cos(zenith) exponent of Haer scaling 
         AE: float = 1.45,             # default Angstrom exponent of ground-layer aerosols
         HPBL: float = 800.0,          # default boundary layer height at zenith
-        HElterman: float = 1200.0,    # default aerosol scale height below HPBL 
+        HElterman: float = 1200.0,    # default aerosol scale height below HPBL
+        verbose: bool = True
     ):
         # telescope
         if telescope_obj is not None:
@@ -139,7 +140,7 @@ class MuonModel:
         else:
             self.atm_cfg = AtmFileConfig()
 
-        self.bh = bandwidth if bandwidth is not None else BandwidthHelper()
+        self.bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)
             
         # observing / model parameters
         self.theta_tel_deg = float(theta_tel_deg)
@@ -164,12 +165,12 @@ class MuonModel:
 
     @classmethod
     def from_LSTN(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200.,
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200., verbose=True, 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.LST()
         atm = AtmosphereHelper.from_lst()
-        bh = bandwidth if bandwidth is not None else BandwidthHelper()        
+        bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)        
         costheta = np.cos(np.deg2rad(theta_tel_deg))
 
         # AE from non-dusty periods day-time,
@@ -182,16 +183,17 @@ class MuonModel:
                    atm_file=atm_file, atm_cfg=atm_cfg,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77, HPBL=800. * costheta ** 0.6,HElterman=1200,
+                   verbose=verbose
                    )
 
     @classmethod
     def from_MSTN(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200., verbose=True, 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.MST()
         atm = AtmosphereHelper.from_mst()
-        bh = bandwidth if bandwidth is not None else BandwidthHelper()                
+        bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)                
         costheta = np.cos(np.deg2rad(theta_tel_deg))
         
         # AE from non-dusty periods day-time,
@@ -204,16 +206,17 @@ class MuonModel:
                    atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=577., gamma=0.77,HPBL=800. * costheta ** 0.6,HElterman=1200,
+                   verbose=verbose                   
                    )
 
     @classmethod
     def from_LSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200., verbose=True, 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.LST()
         atm = AtmosphereHelper.from_lst()
-        bh = bandwidth if bandwidth is not None else BandwidthHelper()                        
+        bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)                        
         
         # extremely shallow nocturnal turbulent surface layer PBL at Paranal, see
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
@@ -222,16 +225,17 @@ class MuonModel:
                    atm_file=atm_file, atm_cfg=atm_cfg,
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500., HPBL=100.,HElterman=9000,
+                   verbose=verbose                  
                    )
 
     @classmethod
     def from_MSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200., verbose=True, 
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.MST()
         atm = AtmosphereHelper.from_mst()
-        bh = bandwidth if bandwidth is not None else BandwidthHelper()                                
+        bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)                                
         
         # extremely shallow nocturnal turbulent surface layer PBL at Paranal, see
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
@@ -240,16 +244,17 @@ class MuonModel:
                    atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500_0., gamma=0.,HPBL=100.,HElterman=9000,
+                   verbose=verbose                   
                    )
 
     @classmethod
     def from_SSTS(cls, bandwidth: BandwidthHelper | None = None,
-                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., 
+                  theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., tel_height=2200., verbose=True,
                   atm_file: str = "data/atm_trans_2147_1_10_0_0_2147.dat", atm_cfg=AtmFileConfig()):
         
         tel_object = tel.SST()
         atm = AtmosphereHelper.from_sst()
-        bh = bandwidth if bandwidth is not None else BandwidthHelper()                                        
+        bh = bandwidth if bandwidth is not None else BandwidthHelper(verbose=verbose)                                        
         
         # extremely shallow nocturnal turbulent surface layer PBL at Paranal, see
         # https://academic.oup.com/mnras/article/492/1/934/5674124, afterwards exponential decay
@@ -258,6 +263,7 @@ class MuonModel:
                    atm_file=atm_file, atm_cfg=atm_cfg,                   
                    scale_h=scale_h,theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg,rhoR_min=rhoR_min,
                    vaod=0.03, AE=1.45, Haer_0=500., gamma=0.,HPBL=100.,HElterman=9000,
+                   verbose=verbose                   
                    )
     
     @staticmethod
@@ -643,16 +649,16 @@ class MuonModel:
     
 
     @staticmethod
-    def build_standard_models(theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500.):
+    def build_standard_models(theta_tel_deg=0., theta_c_deg=1., rhoR_min=0.1, scale_h=9500., verbose = True):
         """
         Convenience constructor for the standard comparison set.
         """
         return {
-            "LSTN": MuonModel.from_LSTN(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h),
-            "LSTS": MuonModel.from_LSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h),
-            "MSTN": MuonModel.from_MSTN(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h),
-            "MSTS": MuonModel.from_MSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h),
-            "SSTS": MuonModel.from_SSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h),
+            "LSTN": MuonModel.from_LSTN(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h, verbose=verbose),
+            "LSTS": MuonModel.from_LSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h, verbose=verbose),
+            "MSTN": MuonModel.from_MSTN(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h, verbose=verbose),
+            "MSTS": MuonModel.from_MSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h, verbose=verbose),
+            "SSTS": MuonModel.from_SSTS(theta_tel_deg=theta_tel_deg, theta_c_deg=theta_c_deg, rhoR_min=rhoR_min, scale_h=scale_h, verbose=verbose),
         }
     
 
@@ -770,12 +776,12 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_xidet_comparison(cls, models: dict | None = None, filename=None, show=True, ax=None):
+    def plot_xidet_comparison(cls, models: dict | None = None, filename=None, show=True, ax=None, verbose=True):
         """
         Comparison plot for LST and SST, equivalent to old plot_xidet.
         """
         if models is None:
-            models = cls.build_standard_models()
+            models = cls.build_standard_models(verbose=verbose)
 
         lstn = models["LSTN"]
         ssts = models["SSTS"]
@@ -825,12 +831,12 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_ratio_comparison(cls, models: dict | None = None, filename=None, show=True, ax=None):
+    def plot_ratio_comparison(cls, models: dict | None = None, filename=None, show=True, ax=None, verbose=True):
         """
         Equivalent of old plot_ratio block.
         """
         if models is None:
-            models = cls.build_standard_models()
+            models = cls.build_standard_models(verbose=verbose)
 
         lstn = models["LSTN"]
         mstn = models["MSTN"]
@@ -963,12 +969,12 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_pde_and_transparency(cls, models: dict | None = None, filename=None, show=True, ax=None):
+    def plot_pde_and_transparency(cls, models: dict | None = None, filename=None, show=True, ax=None, verbose=True):
         """
         Equivalent of old plot_pmt block.
         """
         if models is None:
-            models = cls.build_standard_models()
+            models = cls.build_standard_models(verbose=verbose)
 
         lstn = models["LSTN"]
         ssts = models["SSTS"]
@@ -1019,10 +1025,10 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_transmission_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False):
+    def plot_transmission_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, verbose=True):
 
         if models is None:
-            models = cls.build_standard_models()
+            models = cls.build_standard_models(verbose=verbose)
 
         lstn = models["LSTN"]
         lsts = models["LSTS"]
@@ -1100,7 +1106,7 @@ class MuonModel:
     def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, full_accuracy=True, verbose=True, n_thetas=10):
 
         if models is None:
-            models = cls.build_standard_models()
+            models = cls.build_standard_models(verbose=verbose)
 
         lstn = models["LSTN"]
         lsts = models["LSTS"]
@@ -1108,7 +1114,7 @@ class MuonModel:
         msts = models["MSTS"]        
         ssts = models["SSTS"]
 
-        print ("Standard models created: LSTN, LSTS, MSTN, MSTS, SSTS")
+        print ("\n\nStandard models created: LSTN, LSTS, MSTN, MSTS, SSTS")
 
         # evaluate on custom theta grid
         thetas = np.linspace(0., 75., n_thetas)
@@ -1163,7 +1169,49 @@ class MuonModel:
             fig, ax = plt.subplots(3, 2, constrained_layout=True)
 
         add  = 1.*np.ones_like(thetas)
+
+        print ("Zenith angles (deg): ",end=" ")
+        for theta in thetas:
+            print(f"{theta:7.0f}",end=" ")
+        print ('\n\n')
+
+        def print_results(Bmu,Bmu_sigma,Bgamma,Bgamma_sigma,Bratio,Bratio_sigma):
+            print ("B_mu:                 ",end=" ")
+            for b in Bmu:
+                print(f"{b:7.4f}",end=" ")
+            print (' ')
+            print ("std(B_mu):            ",end=" ")
+            for b in Bmu_sigma:
+                print(f"{b:7.4f}",end=" ")
+            print (' ')
+            print ("B_gamma:              ",end=" ")
+            for b in Bgamma:
+                print(f"{b:7.4f}",end=" ")
+            print (' ')
+            print ("std(B_gamma):         ",end=" ")
+            for b in Bgamma_sigma:
+                print(f"{b:7.4f}",end=" ")
+            print (' ')
+            print ("B_gamma/B_mu:         ",end=" ")
+            for b in Bratio:
+                print(f"{b:7.4f}",end=" ")
+            print (' ')
+            print ("std(B_gamma/B_mu):    ",end=" ")
+            for b in Bratio_sigma:
+                print(f"{b:7.4f}",end=" ")
+            print ('\n\n')
             
+        print ('Results for LSTN: \n')
+        print_results(Blstn_mu,Blstn_mu_sigma,Blstn_gamma,Blstn_gamma_sigma,Blstn_gamma/Blstn_mu,Blstn_ratio_sigma)
+        print ('Results for MSTN: \n')        
+        print_results(Bmstn_mu,Bmstn_mu_sigma,Bmstn_gamma,Bmstn_gamma_sigma,Bmstn_gamma/Bmstn_mu,Bmstn_ratio_sigma)
+        print ('Results for LSTS: \n')        
+        print_results(Blsts_mu,Blsts_mu_sigma,Blsts_gamma,Blsts_gamma_sigma,Blsts_gamma/Blsts_mu,Blsts_ratio_sigma)
+        print ('Results for MSTS: \n')        
+        print_results(Bmsts_mu,Bmsts_mu_sigma,Bmsts_gamma,Bmsts_gamma_sigma,Bmsts_gamma/Bmsts_mu,Bmsts_ratio_sigma)
+        print ('Results for SSTS: \n')        
+        print_results(Bssts_mu,Bssts_mu_sigma,Bssts_gamma,Bssts_gamma_sigma,Bssts_gamma/Bssts_mu,Bssts_ratio_sigma)        
+
         ax[0,0].errorbar(thetas, Blstn_mu, yerr=Blstn_mu_sigma,fmt='',color="b", marker='o', label=r"$B_{\mu}$ (LSTN)")
         ax[0,0].errorbar(thetas+add, Bmstn_mu, yerr=Bmstn_mu_sigma,fmt='', color="cornflowerblue",marker='v', label=r"$B_{\mu}$ (MSTN)")
         ax[0,0].errorbar(thetas+2*add, Blsts_mu, yerr=Blsts_mu_sigma,fmt='', color="r", marker='s', label=r"$B_{\mu}$ (LSTS)")
@@ -1203,7 +1251,7 @@ class MuonModel:
         ax[1,1].set_ylabel(r"$B_{\gamma}$")        
         ax[2,0].set_ylabel(r"$B_{\gamma}/B_{\mu}$")
         ax[2,1].set_ylabel(r"$B_{\gamma}/B_{\mu}$")         
-       #ax[0].set_ylim(0.0, 1.05)
+        #ax[0].set_ylim(0.0, 1.05)
         #ax[1].set_ylim(0.0, 0.5)
 
         cls._save_show(ax[0,0].get_figure(), filename=filename, show=show)
