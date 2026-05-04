@@ -45,7 +45,8 @@ class BandwidthHelper:
                  e_pmt_max       = 4.8,
                  e_sipm_min      = 1.3777,
                  e_sipm_max      = 4.5,
-                 e_pmt_nocam_max = 5.5
+                 e_pmt_nocam_max = 5.5,
+                 verbose         = True
     ):
         self.xi_steps = float(xi_steps)
 
@@ -62,6 +63,8 @@ class BandwidthHelper:
                                  e_pmt_nocam_max=e_pmt_nocam_max)
         self._build_element_products()
 
+        self.verbose = verbose
+        
         self.summary = {
             "QE of PMTs from ": qe_file,
             "QE of SiPMs from ": si_file,
@@ -86,7 +89,8 @@ class BandwidthHelper:
             "Min. photon wavelength PMT w/o camera (nm) " : ev2nm(e_pmt_nocam_max)
         }
 
-        self.print_summary()
+        if verbose: 
+            self.print_summary()
 
 
     def print_summary(self):
