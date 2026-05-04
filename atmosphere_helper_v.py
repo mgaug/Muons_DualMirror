@@ -733,7 +733,9 @@ class AtmosphereHelper:
             else:
                 maxphi = np.pi
         else:
-            maxphi = np.where(rhoR >= 1., np.arcsin(1./rhoR), np.pi)
+            inv_rhoR = 1.0 / rhoR
+            inv_rhoR = np.clip(inv_rhoR, -1.0, 1.0)  # avoid unnecessary warnings fro arcsin
+            maxphi = np.where(rhoR >= 1., np.arcsin(inv_rhoR), np.pi)
             
         out = (1. / maxphi) * trapezoid(av, x=phi, axis=-1)
         return out
@@ -847,7 +849,9 @@ class AtmosphereHelper:
             else:
                 maxphi = np.pi
         else:
-            maxphi = np.where(rhoR >= 1., np.arcsin(1./rhoR), np.pi)
+            inv_rhoR = 1.0 / rhoR
+            inv_rhoR = np.clip(inv_rhoR, -1.0, 1.0)  # avoid unnecessary warnings fro arcsin
+            maxphi = np.where(rhoR >= 1., np.arcsin(inv_rhoR), np.pi)
             
         out = (1. / maxphi) * trapezoid(av, x=phi, axis=-1)
         return out
