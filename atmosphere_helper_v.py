@@ -733,7 +733,11 @@ class AtmosphereHelper:
             else:
                 maxphi = np.pi
         else:
-            inv_rhoR = 1.0 / rhoR
+            inv_rhoR = np.divide(1.0,rhoR,
+                                 out=np.zeros_like(rhoR, dtype=float),
+                                 where=rhoR != 0.0
+            ) # avoid warnings about division by zero            
+            #inv_rhoR = 1.0 / rhoR
             inv_rhoR = np.clip(inv_rhoR, -1.0, 1.0)  # avoid unnecessary warnings fro arcsin
             maxphi = np.where(rhoR >= 1., np.arcsin(inv_rhoR), np.pi)
             
@@ -849,7 +853,11 @@ class AtmosphereHelper:
             else:
                 maxphi = np.pi
         else:
-            inv_rhoR = 1.0 / rhoR
+            inv_rhoR = np.divide(1.0,rhoR,
+                                 out=np.zeros_like(rhoR, dtype=float),
+                                 where=rhoR != 0.0
+            ) # avoid warnings about division by zero            
+            #inv_rhoR = 1.0 / rhoR
             inv_rhoR = np.clip(inv_rhoR, -1.0, 1.0)  # avoid unnecessary warnings fro arcsin
             maxphi = np.where(rhoR >= 1., np.arcsin(inv_rhoR), np.pi)
             
