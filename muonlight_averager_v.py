@@ -2,6 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+from concurrent.futures import ProcessPoolExecutor
 
 from bandwidth_helper_v import BandwidthHelper, nm2ev, ev2nm 
 from atmosphere_helper_v import AtmosphereHelper 
@@ -80,7 +81,68 @@ class AtmFileConfig:
             print(f"{k:60s}: {v}")
         print('\n')
 
+def _simulate_one_bmu(args):
     
+    self, cfg, costheta, n_rho, n_phi, n_path, kwargs, seed = args
+    
+    rng = np.random.default_rng(seed)
+    
+    scale_h_i = max(100.0, rng.normal(self.scale_h, cfg.sigma_scale_h))            
+    vaod_i = max(0., rng.normal(self.vaod, cfg.sigma_vaod))
+    Haer_i = max(1000., rng.normal(self.Haer, cfg.sigma_Haer))
+    gamma_i = max(1.5, rng.normal(self.gamma, cfg.sigma_gamma))            
+    Haer_i = float(Haer_i) * costheta ** gamma_i
+    AE_i = rng.normal(self.AE, cfg.sigma_AE)
+    theta_c_i = min(1.3, max(0.8, rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg)))
+    rhoR_min_i = max(0.0, rng.normal(self.rhoR_min, cfg.sigma_rhoR_min))
+    HPBL_i = max(30.0, rng.normal(self.HPBL, cfg.sigma_HPBL))
+    HElterman_i = max(100.0, rng.normal(self.HElterman, cfg.sigma_HElterman))
+    Hgamma_i = max(4000.0, rng.normal(self.atm.Hgamma, cfg.sigma_Hgamma))
+    
+    # QE uncertainties are absolute uncertainties 
+    qe_i = self.qe_nominal + rng.normal(0.0, self.qe_sigma, size=self.qe_nominal.shape)
+    
+    # Mirror and window uncertainties are treated as relative uncertainties             
+    mirror_i = self.mirror_nominal * (
+        1.0 + rng.normal(0.0, cfg.rel_mirror_unc, size=self.mirror_nominal.shape)
+    )
+    window_i = self.window_nominal * (
+        1.0 + rng.normal(0.0, cfg.rel_window_unc, size=self.window_nominal.shape)
+    )
+    
+    det_i = self.detector_efficiency(qe=qe_i, mirror=mirror_i, window=window_i)
+    
+    mu_i = det_i * (
+        self.atm.av_transmission_rho_mol(
+            self.energy,
+            thetac=np.deg2rad(theta_c_i),
+            costheta=costheta,
+            rhoR_min=rhoR_min_i,
+            scale_h=scale_h_i,
+            n_rho=n_rho,n_phi=n_phi,n_path=n_path,
+            **kwargs,
+        )
+        *
+        self.atm.av_transmission_rho_aer(
+            self.energy,
+            thetac=np.deg2rad(theta_c_i),
+            costheta=costheta,
+            rhoR_min=rhoR_min_i,
+            vaod=vaod_i,
+            Haer=Haer_i,
+            AE=AE_i,
+            HPBL=HPBL_i,
+            HElterman=HElterman_i,
+            n_rho=n_rho,n_phi=n_phi,n_path=n_path,
+            **kwargs,
+        )
+    )
+
+    bmu_i = np.sum(mu_i) * self.energy_step
+    
+    return bmu_i
+        
+  
 
 class MuonModel:
     """
@@ -524,7 +586,9 @@ class MuonModel:
             print(f"{k:60s}: {v}")
         print('\n')            
 
-    def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc = None, full_accuracy=False, **kwargs):
+    def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None,
+                             verbose = True, n_mc = None, full_accuracy=False,
+                             n_workers=None, **kwargs):
         if cfg is None:
             cfg = UncertaintyConfig()
 
@@ -544,7 +608,7 @@ class MuonModel:
         n_rho = 64 if full_accuracy else 16
         n_phi = 512 if full_accuracy else 16
         n_path = 128 if full_accuracy else 32
-        
+
         if verbose: 
             print ('Simulate uncertainties for: ')
             self.print_summary()
@@ -554,17 +618,29 @@ class MuonModel:
             print ('number simulations: ', n_mc,'\n')
             print ('integrations with n_rho: ', n_rho,'\n')
             print ('integrations with n_phi: ', n_phi,'\n')
-            print ('integrations with n_path: ', n_path,'\n')            
-        
+            print ('integrations with n_path: ', n_path,'\n')
+
+        # First pool the muon bandwidths, which take so much longer
+        seed_seq = np.random.SeedSequence(cfg.random_seed)
+        seeds = [s.generate_state(1)[0] for s in seed_seq.spawn(n_mc)]            
+
+        tasks = [
+            (self, cfg, costheta, n_rho, n_phi, n_path, kwargs, seed)
+            for seed in seeds
+        ]
+
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            results = list(pool.map(_simulate_one_bmu, tasks))
+
+        bmu = np.array(results, dtype=float)
+
+        # and now the fast gamma transmissions
         for i in range(n_mc):
-            scale_h_i = max(100.0, rng.normal(self.scale_h, cfg.sigma_scale_h))            
             vaod_i = max(0., rng.normal(self.vaod, cfg.sigma_vaod))
             Haer_i = max(1000., rng.normal(self.Haer, cfg.sigma_Haer))
             gamma_i = max(1.5, rng.normal(self.gamma, cfg.sigma_gamma))            
             Haer_i = float(Haer_i) * costheta ** gamma_i
             AE_i = rng.normal(self.AE, cfg.sigma_AE)
-            theta_c_i = min(1.3, max(0.8, rng.normal(self.theta_c_deg, cfg.sigma_theta_c_deg)))
-            rhoR_min_i = max(0.0, rng.normal(self.rhoR_min, cfg.sigma_rhoR_min))
             HPBL_i = max(30.0, rng.normal(self.HPBL, cfg.sigma_HPBL))
             HElterman_i = max(100.0, rng.normal(self.HElterman, cfg.sigma_HElterman))
             Hgamma_i = max(4000.0, rng.normal(self.atm.Hgamma, cfg.sigma_Hgamma))
@@ -582,38 +658,16 @@ class MuonModel:
 
             det_i = self.detector_efficiency(qe=qe_i, mirror=mirror_i, window=window_i)
 
-            mu_i = det_i * (
-                self.atm.av_transmission_rho_mol(
-                    self.energy,
-                    thetac=np.deg2rad(theta_c_i),
-                    costheta=costheta,
-                    rhoR_min=rhoR_min_i,
-                    scale_h=scale_h_i,
-                    n_rho=n_rho,n_phi=n_phi,n_path=n_path,
-                    **kwargs,
-                )
-                *
-                self.atm.av_transmission_rho_aer(
-                    self.energy,
-                    thetac=np.deg2rad(theta_c_i),
-                    costheta=costheta,
-                    rhoR_min=rhoR_min_i,
-                    vaod=vaod_i,
-                    Haer=Haer_i,
-                    AE=AE_i,
-                    HPBL=HPBL_i,
-                    HElterman=HElterman_i,
-                    n_rho=n_rho,n_phi=n_phi,n_path=n_path,
-                    **kwargs,
-                )
-            )
+            self._setup_gamma_transmission(Hgamma=Hgamma_i,
+                                           vaod_corr=vaod_i,
+                                           Haer_corr=Haer_i,
+                                           HPBL_corr=HPBL_i,
+                                           AE_corr=AE_i,
+                                           HElterman_corr=HElterman_i)
 
-            self._setup_gamma_transmission(Hgamma=Hgamma_i,vaod_corr=vaod_i, Haer_corr=Haer_i, HPBL_corr=HPBL_i, AE_corr=AE_i, HElterman_corr=HElterman_i)
             ga_i = det_i * self.gamma_transmission(costheta=costheta)
 
-            bmu[i] = np.sum(mu_i) * self.energy_step
             bgam[i] = np.sum(ga_i) * self.energy_step
-            ratio[i] = bgam[i] / max(bmu[i], 1e-2)
 
         # restore the original gamma_transmission
         self._setup_gamma_transmission()
@@ -631,7 +685,8 @@ class MuonModel:
         return {
             "B_mu": summary(bmu),
             "B_gamma": summary(bgam),
-            "ratio_gamma_to_muon": summary(ratio),
+            "ratio_gamma_to_muon": summary(bgam / np.maximum(bmu, 1e-2)
+),
             "samples": {
                 "B_mu": bmu,
                 "B_gamma": bgam,
