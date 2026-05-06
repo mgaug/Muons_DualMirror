@@ -1051,7 +1051,6 @@ class MuonModel:
         
 
         ax[1].plot(bh.qe_pmt.energy_ev, bh.qe_pmt.values, "--", color="darkmagenta", label=r"$\xi_{pde}$ (PMT$_1$)")
-        ax[1].plot(bh.qe_ete.energy_ev, bh.qe_ete.values, "--", color="teal", label=r"$\xi_{pde}$ (PMT$_2$)")
         ax[1].plot(bh.qe_sipm.energy_ev, bh.qe_sipm.values, "-", color="green", label=r"$\xi_{pde}$ (SiPM)")
         ax[1].legend(bbox_to_anchor=(0.8, 0.92), loc=2)
 
