@@ -604,8 +604,8 @@ class AtmosphereHelper:
                 1.0 - np.exp(-xx * costheta / Haer)
             )
         else:
-            # the La Palma aerosol model
-            tau = np.where(rmax*costheta < HPBL,
+            # the La Palma aerosol model, see https://academic.oup.com/mnras/article/515/3/4520/6608884, Eq. (19)
+            tau = np.where(xx*costheta < HPBL,
                            (alpha0 / costheta) * HElterman * np.exp(-HPBL/Haer+HPBL/HElterman) * (
                                1.0 - np.exp(-xx * costheta / HElterman)
                            ),
@@ -904,12 +904,15 @@ class AtmosphereHelper:
         )
         if need_corr:
             tgamma_aer_corr_wrong = self.av_transmission_aer(
-                es_corr, Hgamma, 1.0, vaod_wrong, AE_wrong, Haer=Haer_wrong, n_path=1024
+                es_corr, Hgamma, 1.0, vaod_wrong, AE_wrong,
+                Haer=Haer_wrong, n_path=1024
             )
             tgamma_aer_corr_right = self.av_transmission_aer(
                 es_corr, Hgamma, 1.0, vaod_corr, AE_corr,
                 Haer=Haer_corr, HPBL=HPBL_corr, HElterman=HElterman_corr, n_path=1024
             )
+            #print ('tgamma_wrong: ',tgamma_aer_corr_wrong)
+            #print ('tgamma_corr: ',tgamma_aer_corr_right)
             ods += np.log(tgamma_aer_corr_wrong) - np.log(tgamma_aer_corr_right)
             
         return np.exp(-ods)
