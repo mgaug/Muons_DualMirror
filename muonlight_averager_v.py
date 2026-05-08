@@ -517,7 +517,7 @@ class MuonModel:
 
         # integration steps for full_accuracy
         n_rho = 64 if full_accuracy else 16
-        n_phi = 512 if full_accuracy else 32
+        n_phi = 64 if full_accuracy else 32
         n_path = 128 if full_accuracy else 32
         
         tmol = self.muon_transmission_mol(debug=debug,n_rho=n_rho,n_phi=n_phi,n_path=n_path,**kwargs)
@@ -587,7 +587,7 @@ class MuonModel:
         print('\n')            
 
     def simulate_uncertainty(self, cfg: UncertaintyConfig | None = None, costheta = None,
-                             verbose = True, n_mc = None, full_accuracy=False,
+                             verbose = True, n_mc = None, full_accuracy=False, debug=False,
                              n_workers=None, **kwargs):
         if cfg is None:
             cfg = UncertaintyConfig()
@@ -606,7 +606,7 @@ class MuonModel:
 
         # integration steps for full_accuracy
         n_rho = 64 if full_accuracy else 16
-        n_phi = 512 if full_accuracy else 16
+        n_phi = 64 if full_accuracy else 16
         n_path = 128 if full_accuracy else 32
 
         if verbose: 
@@ -665,9 +665,33 @@ class MuonModel:
                                            AE_corr=AE_i,
                                            HElterman_corr=HElterman_i)
 
-            ga_i = det_i * self.gamma_transmission(costheta=costheta)
+
+            gamma_trans = self.gamma_transmission(costheta=costheta)
+            ga_i = det_i * gamma_trans
 
             bgam[i] = np.sum(ga_i) * self.energy_step
+
+            if debug:
+                s = {
+                    "Telescope": self.telescope_name,
+                    "Cosine of zenith angle": costheta,
+                    "VAOD at 532 nm": vaod_i,
+                    "Height of PBL (m)": HPBL_i,
+                    "Aerosol density scale height below PBL (m)": HElterman_i,
+                    "Aerosol density scale height above PBL (m)": Haer_i,
+                    "Exponent of cos(theta) dependency of Haer": gamma_i,
+                    "Angstrom Exponent": AE_i,
+                    "Median height of observed Cherenkov light from gamma showers": Hgamma_i,
+                }
+                
+                print("-" * 70)
+                for k, v in s.items():
+                    print(f"{k:60s}: {v}")
+
+                print ("gamma_transmission_nominal: ",self.gamma_transmission_nominal)                
+                print ("gamma_transmission: ",np.sum(gamma_trans))                
+                print ("gamma_bandwidth: ",bgam[i])
+                print('\n')            
 
         # restore the original gamma_transmission
         self._setup_gamma_transmission()
@@ -694,11 +718,21 @@ class MuonModel:
             },
         }
 
-    def uncertainties_std(self, cfg: UncertaintyConfig | None = None, costheta = None, verbose = True, n_mc=None, **kwargs):
+    def uncertainties_std(self, cfg: UncertaintyConfig | None = None, costheta=None,
+                          verbose=True, n_mc=None, debug=False, **kwargs):
 
-        unc = self.simulate_uncertainty(cfg, costheta=costheta, verbose=verbose, n_mc=n_mc, **kwargs)
+        unc = self.simulate_uncertainty(cfg, costheta=costheta, verbose=verbose, n_mc=n_mc, debug=debug, **kwargs)
         unc_B_mu = unc["B_mu"]
+        if debug:
+            print ('unc_B_mu: ',unc_B_mu)
         unc_B_gamma = unc["B_gamma"]
+        if debug:
+            print ('unc_B_gamma: ',unc_B_gamma)
+        samp = unc["samples"]
+        if debug:
+            print ('sample Bmu: ',samp["B_mu"])
+            print ('sample Bgamma: ', samp["B_gamma"])
+            
         unc_ratio = unc["ratio_gamma_to_muon"]
         return unc_B_mu['std'], unc_B_gamma['std'], unc_ratio['std']
     
@@ -1157,7 +1191,7 @@ class MuonModel:
     # ============================================================
 
     @classmethod
-    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, full_accuracy=True, verbose=True, n_thetas=10):
+    def plot_bandwidth_vs_zenith(cls, models: dict | None = None, filename=None, show=True, ax=None, uncertainties=False, full_accuracy=True, verbose=True, n_thetas=10, debug=False):
 
         if models is None:
             models = cls.build_standard_models(verbose=verbose)
@@ -1199,15 +1233,15 @@ class MuonModel:
             n_mc = 200 if full_accuracy else 20
             
             print ('Start calculating uncertainties with n_mc=',n_mc)
-            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = zip(*[ lstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
+            Blstn_mu_sigma, Blstn_gamma_sigma, Blstn_ratio_sigma = zip(*[ lstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy, debug=debug) for theta in thetas ])
             print ("Created uncertainties for: LSTN")                    
-            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = zip(*[ mstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
+            Bmstn_mu_sigma, Bmstn_gamma_sigma, Bmstn_ratio_sigma = zip(*[ mstn.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy, debug=debug) for theta in thetas ])
             print ("Created uncertainties for: MSTN")                                
-            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = zip(*[ lsts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
+            Blsts_mu_sigma, Blsts_gamma_sigma, Blsts_ratio_sigma = zip(*[ lsts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy, debug=debug) for theta in thetas ])
             print ("Created uncertainties for: LSTS")                                
-            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = zip(*[ msts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
+            Bmsts_mu_sigma, Bmsts_gamma_sigma, Bmsts_ratio_sigma = zip(*[ msts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy, debug=debug) for theta in thetas ])
             print ("Created uncertainties for: MSTS")                                
-            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = zip(*[ ssts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy) for theta in thetas ])
+            Bssts_mu_sigma, Bssts_gamma_sigma, Bssts_ratio_sigma = zip(*[ ssts.uncertainties_std(costheta=np.cos(theta*np.pi/180.), verbose=verbose, n_mc=n_mc, full_accuracy=full_accuracy, debug=debug) for theta in thetas ])
             print ("Created uncertainties for: SSTS")
 
         else:
